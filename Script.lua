@@ -285,12 +285,12 @@ pcall(function()
     FpsCounter.TextSize = 10
     FpsCounter.Parent = FloatingBtn
 
-    -- Janela de Controle VIP / HUB Futurista (Estilo Hubs Famosos de Blox Fruits)
+    -- Janela de Controle Oficial BANANA HUB (Estilo Autêntico Roblox)
     local MainFrame = Instance.new("Frame")
-    MainFrame.Name = "QuickControlCard"
-    MainFrame.Size = UDim2.new(0, 280, 0, 310)
-    MainFrame.Position = UDim2.new(0.04, 65, 0.25, 0)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(11, 15, 26)
+    MainFrame.Name = "BananaHubWindow"
+    MainFrame.Size = UDim2.new(0, 310, 0, 340)
+    MainFrame.Position = UDim2.new(0.04, 65, 0.22, 0)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
     MainFrame.Visible = false
     MainFrame.BorderSizePixel = 0
     MainFrame.Parent = ScreenGui
@@ -299,56 +299,64 @@ pcall(function()
     UICornerCard.CornerRadius = UDim.new(0, 16)
     UICornerCard.Parent = MainFrame
 
-    local UIGradientCard = Instance.new("UIGradient")
-    UIGradientCard.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(15, 23, 42)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(9, 12, 20))
-    })
-    UIGradientCard.Rotation = 60
-    UIGradientCard.Parent = MainFrame
-
     local UIStrokeCard = Instance.new("UIStroke")
     UIStrokeCard.Color = Color3.fromRGB(250, 204, 21)
-    UIStrokeCard.Thickness = 1.8
-    UIStrokeCard.Transparency = 0.4
+    UIStrokeCard.Thickness = 2
+    UIStrokeCard.Transparency = 0.2
     UIStrokeCard.Parent = MainFrame
 
-    -- Barra de Topo com Logo e Botão Fechar
+    -- Barra de Topo Estilo Banana Hub
     local HeaderBar = Instance.new("Frame")
-    HeaderBar.Size = UDim2.new(1, 0, 0, 38)
-    HeaderBar.BackgroundTransparency = 1
+    HeaderBar.Size = UDim2.new(1, 0, 0, 42)
+    HeaderBar.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
+    HeaderBar.BorderSizePixel = 0
     HeaderBar.Parent = MainFrame
 
+    local UICornerHeader = Instance.new("UICorner")
+    UICornerHeader.CornerRadius = UDim.new(0, 16)
+    UICornerHeader.Parent = HeaderBar
+
     local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1, -50, 1, 0)
-    Title.Position = UDim2.new(0, 14, 0, 0)
+    Title.Size = UDim2.new(1, -70, 0, 22)
+    Title.Position = UDim2.new(0, 12, 0, 4)
     Title.BackgroundTransparency = 1
     Title.Text = "🍌 BANANA HUB"
-    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.TextColor3 = Color3.fromRGB(250, 204, 21)
     Title.Font = Enum.Font.GothamBlack
-    Title.TextSize = 13
+    Title.TextSize = 14
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.Parent = HeaderBar
 
+    local Subtitle = Instance.new("TextLabel")
+    Subtitle.Size = UDim2.new(1, -70, 0, 14)
+    Subtitle.Position = UDim2.new(0, 12, 0, 24)
+    Subtitle.BackgroundTransparency = 1
+    Subtitle.Text = "Blox Fruits • V3.5 No Key • FPS Booster"
+    Subtitle.TextColor3 = Color3.fromRGB(148, 163, 184)
+    Subtitle.Font = Enum.Font.GothamMedium
+    Subtitle.TextSize = 9
+    Subtitle.TextXAlignment = Enum.TextXAlignment.Left
+    Subtitle.Parent = HeaderBar
+
     local CloseBtn = Instance.new("TextButton")
-    CloseBtn.Size = UDim2.new(0, 24, 0, 24)
-    CloseBtn.Position = UDim2.new(1, -34, 0, 7)
-    CloseBtn.BackgroundColor3 = Color3.fromRGB(30, 41, 59)
+    CloseBtn.Size = UDim2.new(0, 26, 0, 26)
+    CloseBtn.Position = UDim2.new(1, -36, 0, 8)
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 35)
     CloseBtn.Text = "✕"
-    CloseBtn.TextColor3 = Color3.fromRGB(148, 163, 184)
+    CloseBtn.TextColor3 = Color3.fromRGB(250, 204, 21)
     CloseBtn.Font = Enum.Font.GothamBold
-    CloseBtn.TextSize = 12
+    CloseBtn.TextSize = 13
     CloseBtn.Parent = HeaderBar
 
     local UICornerClose = Instance.new("UICorner")
-    UICornerClose.CornerRadius = UDim.new(0, 6)
+    UICornerClose.CornerRadius = UDim.new(0, 8)
     UICornerClose.Parent = CloseBtn
 
-    -- Dashboard com Indicadores em Tempo Real (FPS + RAM)
+    -- Dashboard com Indicadores em Tempo Real (FPS + RAM + PING)
     local MonitorBox = Instance.new("Frame")
-    MonitorBox.Size = UDim2.new(1, -24, 0, 32)
-    MonitorBox.Position = UDim2.new(0, 12, 0, 42)
-    MonitorBox.BackgroundColor3 = Color3.fromRGB(18, 24, 38)
+    MonitorBox.Size = UDim2.new(1, -24, 0, 30)
+    MonitorBox.Position = UDim2.new(0, 12, 0, 48)
+    MonitorBox.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
     MonitorBox.BorderSizePixel = 0
     MonitorBox.Parent = MainFrame
 
@@ -357,7 +365,8 @@ pcall(function()
     UICornerMonitor.Parent = MonitorBox
 
     local UIStrokeMonitor = Instance.new("UIStroke")
-    UIStrokeMonitor.Color = Color3.fromRGB(30, 41, 59)
+    UIStrokeMonitor.Color = Color3.fromRGB(250, 204, 21)
+    UIStrokeMonitor.Transparency = 0.6
     UIStrokeMonitor.Thickness = 1
     UIStrokeMonitor.Parent = MonitorBox
 
@@ -365,21 +374,21 @@ pcall(function()
     StatsBar.Size = UDim2.new(1, -12, 1, 0)
     StatsBar.Position = UDim2.new(0, 6, 0, 0)
     StatsBar.BackgroundTransparency = 1
-    StatsBar.Text = "📊 FPS: 60  |  RAM: Calculando..."
-    StatsBar.TextColor3 = Color3.fromRGB(56, 189, 248)
+    StatsBar.Text = "🍌 FPS: 60  |  RAM: 340 MB  |  PING: 22ms"
+    StatsBar.TextColor3 = Color3.fromRGB(250, 204, 21)
     StatsBar.Font = Enum.Font.RobotoMono
     StatsBar.TextSize = 11
     StatsBar.TextXAlignment = Enum.TextXAlignment.Center
     StatsBar.Parent = MonitorBox
 
-    -- Botão 1: Otimizar Ilha & Mar (com cor tema do Hub)
+    -- Botão 1: Otimizar Ilha & Mar (Amarelo Banana Ouro Vibrante)
     local ReapplyBtn = Instance.new("TextButton")
-    ReapplyBtn.Size = UDim2.new(1, -24, 0, 36)
-    ReapplyBtn.Position = UDim2.new(0, 12, 0, 84)
-    ReapplyBtn.BackgroundColor3 = Color3.fromRGB(234, 179, 8)
-    ReapplyBtn.Text = "🍌 OTIMIZAR ILHA & MAR ATUAL"
-    ReapplyBtn.TextColor3 = Color3.fromRGB(11, 15, 26)
-    ReapplyBtn.Font = Enum.Font.GothamBold
+    ReapplyBtn.Size = UDim2.new(1, -24, 0, 38)
+    ReapplyBtn.Position = UDim2.new(0, 12, 0, 86)
+    ReapplyBtn.BackgroundColor3 = Color3.fromRGB(250, 204, 21)
+    ReapplyBtn.Text = "🍌 OTIMIZAR ILHA & MAR (BANANA BOOST)"
+    ReapplyBtn.TextColor3 = Color3.fromRGB(15, 15, 20)
+    ReapplyBtn.Font = Enum.Font.GothamBlack
     ReapplyBtn.TextSize = 11
     ReapplyBtn.Parent = MainFrame
 
@@ -390,10 +399,10 @@ pcall(function()
     -- Botão 2: Limpar Memória RAM Real
     local ClearRamBtn = Instance.new("TextButton")
     ClearRamBtn.Size = UDim2.new(1, -24, 0, 36)
-    ClearRamBtn.Position = UDim2.new(0, 12, 0, 126)
-    ClearRamBtn.BackgroundColor3 = Color3.fromRGB(30, 41, 59)
-    ClearRamBtn.Text = "🧹 LIBERAR MEMÓRIA RAM (LIMPEZA)"
-    ClearRamBtn.TextColor3 = Color3.fromRGB(226, 232, 240)
+    ClearRamBtn.Position = UDim2.new(0, 12, 0, 130)
+    ClearRamBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+    ClearRamBtn.Text = "🧹 LIBERAR MEMÓRIA RAM AGORA"
+    ClearRamBtn.TextColor3 = Color3.fromRGB(250, 204, 21)
     ClearRamBtn.Font = Enum.Font.GothamBold
     ClearRamBtn.TextSize = 11
     ClearRamBtn.Parent = MainFrame
@@ -402,10 +411,16 @@ pcall(function()
     UICornerClear.CornerRadius = UDim.new(0, 10)
     UICornerClear.Parent = ClearRamBtn
 
-    -- Botão 3: Zerar Fumaça e Partículas de Frutas (PvP Boost Vermelho Radiante)
+    local UIStrokeClear = Instance.new("UIStroke")
+    UIStrokeClear.Color = Color3.fromRGB(250, 204, 21)
+    UIStrokeClear.Transparency = 0.7
+    UIStrokeClear.Thickness = 1
+    UIStrokeClear.Parent = ClearRamBtn
+
+    -- Botão 3: Zerar Fumaça e Partículas de Frutas (PvP Dough / Kitsune)
     local PurgeVfxBtn = Instance.new("TextButton")
     PurgeVfxBtn.Size = UDim2.new(1, -24, 0, 36)
-    PurgeVfxBtn.Position = UDim2.new(0, 12, 0, 168)
+    PurgeVfxBtn.Position = UDim2.new(0, 12, 0, 172)
     PurgeVfxBtn.BackgroundColor3 = Color3.fromRGB(225, 29, 72)
     PurgeVfxBtn.Text = "⚔️ LIMPAR FUMAÇA DE FRUTAS (PVP)"
     PurgeVfxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -420,8 +435,8 @@ pcall(function()
     -- Botão 4: Modo Eco / Anti-Aquecimento (AFK Farm)
     local EcoBtn = Instance.new("TextButton")
     EcoBtn.Size = UDim2.new(1, -24, 0, 34)
-    EcoBtn.Position = UDim2.new(0, 12, 0, 210)
-    EcoBtn.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
+    EcoBtn.Position = UDim2.new(0, 12, 0, 214)
+    EcoBtn.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
     EcoBtn.Text = "🔋 MODO ANTI-AQUECIMENTO (AFK): OFF"
     EcoBtn.TextColor3 = Color3.fromRGB(148, 163, 184)
     EcoBtn.Font = Enum.Font.GothamBold
@@ -433,16 +448,16 @@ pcall(function()
     UICornerEco.Parent = EcoBtn
 
     local UIStrokeEco = Instance.new("UIStroke")
-    UIStrokeEco.Color = Color3.fromRGB(30, 41, 59)
+    UIStrokeEco.Color = Color3.fromRGB(38, 38, 48)
     UIStrokeEco.Thickness = 1
     UIStrokeEco.Parent = EcoBtn
 
     -- Rodapé com Status e Proteção
     local ProtectionLabel = Instance.new("TextLabel")
     ProtectionLabel.Size = UDim2.new(1, -24, 0, 20)
-    ProtectionLabel.Position = UDim2.new(0, 12, 0, 252)
+    ProtectionLabel.Position = UDim2.new(0, 12, 0, 256)
     ProtectionLabel.BackgroundTransparency = 1
-    ProtectionLabel.Text = "🛡️ Missões, Baús e Ken Haki 100% Salvos"
+    ProtectionLabel.Text = "🛡️ Banana Safe: Quests, Baús e Ken Haki 100% Salvos"
     ProtectionLabel.TextColor3 = Color3.fromRGB(74, 222, 128)
     ProtectionLabel.Font = Enum.Font.GothamBold
     ProtectionLabel.TextSize = 10
@@ -450,10 +465,10 @@ pcall(function()
 
     local DragHint = Instance.new("TextLabel")
     DragHint.Size = UDim2.new(1, -24, 0, 16)
-    DragHint.Position = UDim2.new(0, 12, 0, 276)
+    DragHint.Position = UDim2.new(0, 12, 0, 282)
     DragHint.BackgroundTransparency = 1
-    DragHint.Text = "Arraste o ícone ⚡ para onde achar melhor"
-    DragHint.TextColor3 = Color3.fromRGB(100, 116, 139)
+    DragHint.Text = "Arraste o ícone 🍌 para onde achar melhor na tela"
+    DragHint.TextColor3 = Color3.fromRGB(250, 204, 21)
     DragHint.Font = Enum.Font.Gotham
     DragHint.TextSize = 9
     DragHint.Parent = MainFrame
