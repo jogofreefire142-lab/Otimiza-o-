@@ -258,7 +258,7 @@ pcall(function()
     UIGradientBtn.Parent = FloatingBtn
 
     local UIStrokeBtn = Instance.new("UIStroke")
-    UIStrokeBtn.Color = Color3.fromRGB(239, 68, 68)
+    UIStrokeBtn.Color = Color3.fromRGB(250, 204, 21)
     UIStrokeBtn.Thickness = 2
     UIStrokeBtn.Transparency = 0.15
     UIStrokeBtn.Parent = FloatingBtn
@@ -268,8 +268,8 @@ pcall(function()
     IconLabel.Size = UDim2.new(1, 0, 0, 28)
     IconLabel.Position = UDim2.new(0, 0, 0, 4)
     IconLabel.BackgroundTransparency = 1
-    IconLabel.Text = "🔥"
-    IconLabel.TextColor3 = Color3.fromRGB(239, 68, 68)
+    IconLabel.Text = "🍌"
+    IconLabel.TextColor3 = Color3.fromRGB(250, 204, 21)
     IconLabel.TextSize = 22
     IconLabel.Font = Enum.Font.GothamBold
     IconLabel.Parent = FloatingBtn
@@ -308,7 +308,7 @@ pcall(function()
     UIGradientCard.Parent = MainFrame
 
     local UIStrokeCard = Instance.new("UIStroke")
-    UIStrokeCard.Color = Color3.fromRGB(239, 68, 68)
+    UIStrokeCard.Color = Color3.fromRGB(250, 204, 21)
     UIStrokeCard.Thickness = 1.8
     UIStrokeCard.Transparency = 0.4
     UIStrokeCard.Parent = MainFrame
@@ -323,7 +323,7 @@ pcall(function()
     Title.Size = UDim2.new(1, -50, 1, 0)
     Title.Position = UDim2.new(0, 14, 0, 0)
     Title.BackgroundTransparency = 1
-    Title.Text = "🔥 FIRE HYPER BOOST HUB"
+    Title.Text = "🍌 BANANA HUB"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.Font = Enum.Font.GothamBlack
     Title.TextSize = 13
@@ -372,12 +372,12 @@ pcall(function()
     StatsBar.TextXAlignment = Enum.TextXAlignment.Center
     StatsBar.Parent = MonitorBox
 
-    -- Botão 1: Otimizar Ilha & Mar (com gradiente ciano neon)
+    -- Botão 1: Otimizar Ilha & Mar (com cor tema do Hub)
     local ReapplyBtn = Instance.new("TextButton")
     ReapplyBtn.Size = UDim2.new(1, -24, 0, 36)
     ReapplyBtn.Position = UDim2.new(0, 12, 0, 84)
-    ReapplyBtn.BackgroundColor3 = Color3.fromRGB(14, 165, 233)
-    ReapplyBtn.Text = "⚡ OTIMIZAR ILHA & MAR ATUAL"
+    ReapplyBtn.BackgroundColor3 = Color3.fromRGB(234, 179, 8)
+    ReapplyBtn.Text = "🍌 OTIMIZAR ILHA & MAR ATUAL"
     ReapplyBtn.TextColor3 = Color3.fromRGB(11, 15, 26)
     ReapplyBtn.Font = Enum.Font.GothamBold
     ReapplyBtn.TextSize = 11
