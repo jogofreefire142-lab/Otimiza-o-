@@ -1,7 +1,7 @@
 --[[
     ===================================================================
     ⚡ BLOX FRUITS & ROBLOX LUA FPS OPTIMIZER ⚡
-    Preset Ativo: SEA_RAIDS
+    Preset Ativo: POTATO
     Objetivo: Máximo FPS, Redução de Input Lag e Estabilidade Térmica
     Segurança: 100% Client-Side Graphic Optimization (Sem risco de ban)
     ===================================================================
@@ -36,9 +36,9 @@ pcall(function()
     if settings and settings().Rendering then
         settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
     end
-    -- Define limite de FPS fixado em 60 FPS
+    -- Desbloqueia taxa de quadros (FPS Desbloqueado)
     if setfpscap then
-        setfpscap(60)
+        setfpscap(999)
     end
     -- Otimização Real de Física e Animações (InterpolationThrottling)
     -- Reduz o consumo de CPU em mobs distantes e barcos
@@ -258,18 +258,18 @@ pcall(function()
     UIGradientBtn.Parent = FloatingBtn
 
     local UIStrokeBtn = Instance.new("UIStroke")
-    UIStrokeBtn.Color = Color3.fromRGB(56, 189, 248)
+    UIStrokeBtn.Color = Color3.fromRGB(239, 68, 68)
     UIStrokeBtn.Thickness = 2
     UIStrokeBtn.Transparency = 0.15
     UIStrokeBtn.Parent = FloatingBtn
 
-    -- Ícone de Raio com brilho
+    -- Ícone Selecionado com Brilho
     local IconLabel = Instance.new("TextLabel")
     IconLabel.Size = UDim2.new(1, 0, 0, 28)
     IconLabel.Position = UDim2.new(0, 0, 0, 4)
     IconLabel.BackgroundTransparency = 1
-    IconLabel.Text = "⚡"
-    IconLabel.TextColor3 = Color3.fromRGB(56, 189, 248)
+    IconLabel.Text = "🔥"
+    IconLabel.TextColor3 = Color3.fromRGB(239, 68, 68)
     IconLabel.TextSize = 22
     IconLabel.Font = Enum.Font.GothamBold
     IconLabel.Parent = FloatingBtn
@@ -308,7 +308,7 @@ pcall(function()
     UIGradientCard.Parent = MainFrame
 
     local UIStrokeCard = Instance.new("UIStroke")
-    UIStrokeCard.Color = Color3.fromRGB(56, 189, 248)
+    UIStrokeCard.Color = Color3.fromRGB(239, 68, 68)
     UIStrokeCard.Thickness = 1.8
     UIStrokeCard.Transparency = 0.4
     UIStrokeCard.Parent = MainFrame
@@ -323,7 +323,7 @@ pcall(function()
     Title.Size = UDim2.new(1, -50, 1, 0)
     Title.Position = UDim2.new(0, 14, 0, 0)
     Title.BackgroundTransparency = 1
-    Title.Text = "⚡ BLOX FRUITS FPS HUB"
+    Title.Text = "🔥 FIRE HYPER BOOST HUB"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.Font = Enum.Font.GothamBlack
     Title.TextSize = 13
