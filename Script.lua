@@ -1,7 +1,7 @@
 --[[
     ===================================================================
     ⚡ BLOX FRUITS & ROBLOX LUA FPS OPTIMIZER ⚡
-    Preset Ativo: POTATO
+    Preset Ativo: SEA_RAIDS
     Objetivo: Máximo FPS, Redução de Input Lag e Estabilidade Térmica
     Segurança: 100% Client-Side Graphic Optimization (Sem risco de ban)
     ===================================================================
@@ -36,9 +36,9 @@ pcall(function()
     if settings and settings().Rendering then
         settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
     end
-    -- Desbloqueia taxa de quadros (FPS Desbloqueado)
+    -- Define limite de FPS fixado em 60 FPS
     if setfpscap then
-        setfpscap(999)
+        setfpscap(60)
     end
     -- Otimização Real de Física e Animações (InterpolationThrottling)
     -- Reduz o consumo de CPU em mobs distantes e barcos
@@ -235,166 +235,232 @@ pcall(function()
         ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
     end
 
-    -- Botão / Ícone Flutuante Arrastável
+    -- Botão / Ícone Flutuante Arrastável Estilo Gamer Premium
     local FloatingBtn = Instance.new("TextButton")
     FloatingBtn.Name = "FpsFloatingIcon"
-    FloatingBtn.Size = UDim2.new(0, 52, 0, 52)
+    FloatingBtn.Size = UDim2.new(0, 56, 0, 56)
     FloatingBtn.Position = UDim2.new(0.04, 0, 0.35, 0)
-    FloatingBtn.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
-    FloatingBtn.Text = "⚡"
-    FloatingBtn.TextColor3 = Color3.fromRGB(56, 189, 248)
-    FloatingBtn.TextSize = 24
-    FloatingBtn.Font = Enum.Font.GothamBold
+    FloatingBtn.BackgroundColor3 = Color3.fromRGB(13, 17, 23)
+    FloatingBtn.Text = ""
     FloatingBtn.AutoButtonColor = false
     FloatingBtn.Parent = ScreenGui
 
     local UICornerBtn = Instance.new("UICorner")
-    UICornerBtn.CornerRadius = UDim.new(0, 16)
+    UICornerBtn.CornerRadius = UDim.new(0, 18)
     UICornerBtn.Parent = FloatingBtn
+
+    local UIGradientBtn = Instance.new("UIGradient")
+    UIGradientBtn.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(24, 30, 48)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(11, 15, 25))
+    })
+    UIGradientBtn.Rotation = 45
+    UIGradientBtn.Parent = FloatingBtn
 
     local UIStrokeBtn = Instance.new("UIStroke")
     UIStrokeBtn.Color = Color3.fromRGB(56, 189, 248)
     UIStrokeBtn.Thickness = 2
-    UIStrokeBtn.Transparency = 0.2
+    UIStrokeBtn.Transparency = 0.15
     UIStrokeBtn.Parent = FloatingBtn
+
+    -- Ícone de Raio com brilho
+    local IconLabel = Instance.new("TextLabel")
+    IconLabel.Size = UDim2.new(1, 0, 0, 28)
+    IconLabel.Position = UDim2.new(0, 0, 0, 4)
+    IconLabel.BackgroundTransparency = 1
+    IconLabel.Text = "⚡"
+    IconLabel.TextColor3 = Color3.fromRGB(56, 189, 248)
+    IconLabel.TextSize = 22
+    IconLabel.Font = Enum.Font.GothamBold
+    IconLabel.Parent = FloatingBtn
 
     -- Contador de FPS abaixo do ícone
     local FpsCounter = Instance.new("TextLabel")
     FpsCounter.Size = UDim2.new(1, 0, 0, 16)
-    FpsCounter.Position = UDim2.new(0, 0, 1, 2)
+    FpsCounter.Position = UDim2.new(0, 0, 0, 32)
     FpsCounter.BackgroundTransparency = 1
     FpsCounter.Text = "60 FPS"
     FpsCounter.TextColor3 = Color3.fromRGB(74, 222, 128)
-    FpsCounter.Font = Enum.Font.RobotoMono
-    FpsCounter.TextSize = 11
+    FpsCounter.Font = Enum.Font.GothamBold
+    FpsCounter.TextSize = 10
     FpsCounter.Parent = FloatingBtn
 
-    -- Janela de Controle Rápida (Card Elegante, Moderno e Legível)
+    -- Janela de Controle VIP / HUB Futurista (Estilo Hubs Famosos de Blox Fruits)
     local MainFrame = Instance.new("Frame")
     MainFrame.Name = "QuickControlCard"
-    MainFrame.Size = UDim2.new(0, 260, 0, 275)
-    MainFrame.Position = UDim2.new(0.04, 60, 0.28, 0)
+    MainFrame.Size = UDim2.new(0, 280, 0, 310)
+    MainFrame.Position = UDim2.new(0.04, 65, 0.25, 0)
     MainFrame.BackgroundColor3 = Color3.fromRGB(11, 15, 26)
     MainFrame.Visible = false
     MainFrame.BorderSizePixel = 0
     MainFrame.Parent = ScreenGui
 
     local UICornerCard = Instance.new("UICorner")
-    UICornerCard.CornerRadius = UDim.new(0, 14)
+    UICornerCard.CornerRadius = UDim.new(0, 16)
     UICornerCard.Parent = MainFrame
 
+    local UIGradientCard = Instance.new("UIGradient")
+    UIGradientCard.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(15, 23, 42)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(9, 12, 20))
+    })
+    UIGradientCard.Rotation = 60
+    UIGradientCard.Parent = MainFrame
+
     local UIStrokeCard = Instance.new("UIStroke")
-    UIStrokeCard.Color = Color3.fromRGB(30, 41, 59)
-    UIStrokeCard.Thickness = 1.5
+    UIStrokeCard.Color = Color3.fromRGB(56, 189, 248)
+    UIStrokeCard.Thickness = 1.8
+    UIStrokeCard.Transparency = 0.4
     UIStrokeCard.Parent = MainFrame
 
-    -- Título da Janelinha
+    -- Barra de Topo com Logo e Botão Fechar
+    local HeaderBar = Instance.new("Frame")
+    HeaderBar.Size = UDim2.new(1, 0, 0, 38)
+    HeaderBar.BackgroundTransparency = 1
+    HeaderBar.Parent = MainFrame
+
     local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1, -20, 0, 26)
-    Title.Position = UDim2.new(0, 12, 0, 8)
+    Title.Size = UDim2.new(1, -50, 1, 0)
+    Title.Position = UDim2.new(0, 14, 0, 0)
     Title.BackgroundTransparency = 1
-    Title.Text = "⚡ Blox Fruits Pro Booster"
-    Title.TextColor3 = Color3.fromRGB(241, 245, 249)
-    Title.Font = Enum.Font.GothamBold
+    Title.Text = "⚡ BLOX FRUITS FPS HUB"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.GothamBlack
     Title.TextSize = 13
     Title.TextXAlignment = Enum.TextXAlignment.Left
-    Title.Parent = MainFrame
+    Title.Parent = HeaderBar
 
-    -- Barra de Status com RAM e Ping em Tempo Real
+    local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Size = UDim2.new(0, 24, 0, 24)
+    CloseBtn.Position = UDim2.new(1, -34, 0, 7)
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(30, 41, 59)
+    CloseBtn.Text = "✕"
+    CloseBtn.TextColor3 = Color3.fromRGB(148, 163, 184)
+    CloseBtn.Font = Enum.Font.GothamBold
+    CloseBtn.TextSize = 12
+    CloseBtn.Parent = HeaderBar
+
+    local UICornerClose = Instance.new("UICorner")
+    UICornerClose.CornerRadius = UDim.new(0, 6)
+    UICornerClose.Parent = CloseBtn
+
+    -- Dashboard com Indicadores em Tempo Real (FPS + RAM)
+    local MonitorBox = Instance.new("Frame")
+    MonitorBox.Size = UDim2.new(1, -24, 0, 32)
+    MonitorBox.Position = UDim2.new(0, 12, 0, 42)
+    MonitorBox.BackgroundColor3 = Color3.fromRGB(18, 24, 38)
+    MonitorBox.BorderSizePixel = 0
+    MonitorBox.Parent = MainFrame
+
+    local UICornerMonitor = Instance.new("UICorner")
+    UICornerMonitor.CornerRadius = UDim.new(0, 8)
+    UICornerMonitor.Parent = MonitorBox
+
+    local UIStrokeMonitor = Instance.new("UIStroke")
+    UIStrokeMonitor.Color = Color3.fromRGB(30, 41, 59)
+    UIStrokeMonitor.Thickness = 1
+    UIStrokeMonitor.Parent = MonitorBox
+
     local StatsBar = Instance.new("TextLabel")
-    StatsBar.Size = UDim2.new(1, -24, 0, 20)
-    StatsBar.Position = UDim2.new(0, 12, 0, 34)
-    StatsBar.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
-    StatsBar.Text = "📊 RAM: Calculando... | 60 FPS"
+    StatsBar.Size = UDim2.new(1, -12, 1, 0)
+    StatsBar.Position = UDim2.new(0, 6, 0, 0)
+    StatsBar.BackgroundTransparency = 1
+    StatsBar.Text = "📊 FPS: 60  |  RAM: Calculando..."
     StatsBar.TextColor3 = Color3.fromRGB(56, 189, 248)
     StatsBar.Font = Enum.Font.RobotoMono
-    StatsBar.TextSize = 10
-    StatsBar.Parent = MainFrame
+    StatsBar.TextSize = 11
+    StatsBar.TextXAlignment = Enum.TextXAlignment.Center
+    StatsBar.Parent = MonitorBox
 
-    local UICornerStats = Instance.new("UICorner")
-    UICornerStats.CornerRadius = UDim.new(0, 6)
-    UICornerStats.Parent = StatsBar
-
-    -- Botão 1: Reotimizar Ilha Atual
+    -- Botão 1: Otimizar Ilha & Mar (com gradiente ciano neon)
     local ReapplyBtn = Instance.new("TextButton")
-    ReapplyBtn.Size = UDim2.new(1, -24, 0, 34)
-    ReapplyBtn.Position = UDim2.new(0, 12, 0, 60)
+    ReapplyBtn.Size = UDim2.new(1, -24, 0, 36)
+    ReapplyBtn.Position = UDim2.new(0, 12, 0, 84)
     ReapplyBtn.BackgroundColor3 = Color3.fromRGB(14, 165, 233)
-    ReapplyBtn.Text = "🔄 Otimizar Ilha & Mar Atual"
-    ReapplyBtn.TextColor3 = Color3.fromRGB(15, 23, 42)
+    ReapplyBtn.Text = "⚡ OTIMIZAR ILHA & MAR ATUAL"
+    ReapplyBtn.TextColor3 = Color3.fromRGB(11, 15, 26)
     ReapplyBtn.Font = Enum.Font.GothamBold
     ReapplyBtn.TextSize = 11
     ReapplyBtn.Parent = MainFrame
 
     local UICornerReapply = Instance.new("UICorner")
-    UICornerReapply.CornerRadius = UDim.new(0, 8)
+    UICornerReapply.CornerRadius = UDim.new(0, 10)
     UICornerReapply.Parent = ReapplyBtn
 
     -- Botão 2: Limpar Memória RAM Real
     local ClearRamBtn = Instance.new("TextButton")
-    ClearRamBtn.Size = UDim2.new(1, -24, 0, 34)
-    ClearRamBtn.Position = UDim2.new(0, 12, 0, 100)
+    ClearRamBtn.Size = UDim2.new(1, -24, 0, 36)
+    ClearRamBtn.Position = UDim2.new(0, 12, 0, 126)
     ClearRamBtn.BackgroundColor3 = Color3.fromRGB(30, 41, 59)
-    ClearRamBtn.Text = "🧹 Liberar Memória RAM Agora"
+    ClearRamBtn.Text = "🧹 LIBERAR MEMÓRIA RAM (LIMPEZA)"
     ClearRamBtn.TextColor3 = Color3.fromRGB(226, 232, 240)
-    ClearRamBtn.Font = Enum.Font.GothamMedium
+    ClearRamBtn.Font = Enum.Font.GothamBold
     ClearRamBtn.TextSize = 11
     ClearRamBtn.Parent = MainFrame
 
     local UICornerClear = Instance.new("UICorner")
-    UICornerClear.CornerRadius = UDim.new(0, 8)
+    UICornerClear.CornerRadius = UDim.new(0, 10)
     UICornerClear.Parent = ClearRamBtn
 
-    -- Botão 3: Zerar Fumaça e Partículas de Frutas (PvP Boost)
+    -- Botão 3: Zerar Fumaça e Partículas de Frutas (PvP Boost Vermelho Radiante)
     local PurgeVfxBtn = Instance.new("TextButton")
-    PurgeVfxBtn.Size = UDim2.new(1, -24, 0, 34)
-    PurgeVfxBtn.Position = UDim2.new(0, 12, 0, 140)
-    PurgeVfxBtn.BackgroundColor3 = Color3.fromRGB(244, 63, 94)
-    PurgeVfxBtn.Text = "⚔️ Limpar Efeitos Visuais de Frutas"
+    PurgeVfxBtn.Size = UDim2.new(1, -24, 0, 36)
+    PurgeVfxBtn.Position = UDim2.new(0, 12, 0, 168)
+    PurgeVfxBtn.BackgroundColor3 = Color3.fromRGB(225, 29, 72)
+    PurgeVfxBtn.Text = "⚔️ LIMPAR FUMAÇA DE FRUTAS (PVP)"
     PurgeVfxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     PurgeVfxBtn.Font = Enum.Font.GothamBold
     PurgeVfxBtn.TextSize = 11
     PurgeVfxBtn.Parent = MainFrame
 
     local UICornerPurge = Instance.new("UICorner")
-    UICornerPurge.CornerRadius = UDim.new(0, 8)
+    UICornerPurge.CornerRadius = UDim.new(0, 10)
     UICornerPurge.Parent = PurgeVfxBtn
 
-    -- Botão 4: Modo Eco / Anti-Aquecimento (Economizador de Bateria em AFK)
+    -- Botão 4: Modo Eco / Anti-Aquecimento (AFK Farm)
     local EcoBtn = Instance.new("TextButton")
-    EcoBtn.Size = UDim2.new(1, -24, 0, 30)
-    EcoBtn.Position = UDim2.new(0, 12, 0, 180)
+    EcoBtn.Size = UDim2.new(1, -24, 0, 34)
+    EcoBtn.Position = UDim2.new(0, 12, 0, 210)
     EcoBtn.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
-    EcoBtn.Text = "🔋 Modo Eco / Anti-Aquecimento: OFF"
+    EcoBtn.Text = "🔋 MODO ANTI-AQUECIMENTO (AFK): OFF"
     EcoBtn.TextColor3 = Color3.fromRGB(148, 163, 184)
-    EcoBtn.Font = Enum.Font.GothamMedium
+    EcoBtn.Font = Enum.Font.GothamBold
     EcoBtn.TextSize = 10
     EcoBtn.Parent = MainFrame
 
     local UICornerEco = Instance.new("UICorner")
-    UICornerEco.CornerRadius = UDim.new(0, 8)
+    UICornerEco.CornerRadius = UDim.new(0, 10)
     UICornerEco.Parent = EcoBtn
 
-    -- Status de Proteção
+    local UIStrokeEco = Instance.new("UIStroke")
+    UIStrokeEco.Color = Color3.fromRGB(30, 41, 59)
+    UIStrokeEco.Thickness = 1
+    UIStrokeEco.Parent = EcoBtn
+
+    -- Rodapé com Status e Proteção
     local ProtectionLabel = Instance.new("TextLabel")
-    ProtectionLabel.Size = UDim2.new(1, -24, 0, 18)
-    ProtectionLabel.Position = UDim2.new(0, 12, 0, 218)
+    ProtectionLabel.Size = UDim2.new(1, -24, 0, 20)
+    ProtectionLabel.Position = UDim2.new(0, 12, 0, 252)
     ProtectionLabel.BackgroundTransparency = 1
-    ProtectionLabel.Text = "✓ Baús, Quests e Ken Haki 100% Intactos"
+    ProtectionLabel.Text = "🛡️ Missões, Baús e Ken Haki 100% Salvos"
     ProtectionLabel.TextColor3 = Color3.fromRGB(74, 222, 128)
-    ProtectionLabel.Font = Enum.Font.Gotham
+    ProtectionLabel.Font = Enum.Font.GothamBold
     ProtectionLabel.TextSize = 10
     ProtectionLabel.Parent = MainFrame
 
-    local CloseHint = Instance.new("TextLabel")
-    CloseHint.Size = UDim2.new(1, -24, 0, 16)
-    CloseHint.Position = UDim2.new(0, 12, 0, 244)
-    CloseHint.BackgroundTransparency = 1
-    CloseHint.Text = "Arraste o ícone ⚡ para onde quiser"
-    CloseHint.TextColor3 = Color3.fromRGB(100, 116, 139)
-    CloseHint.Font = Enum.Font.Gotham
-    CloseHint.TextSize = 9
-    CloseHint.Parent = MainFrame
+    local DragHint = Instance.new("TextLabel")
+    DragHint.Size = UDim2.new(1, -24, 0, 16)
+    DragHint.Position = UDim2.new(0, 12, 0, 276)
+    DragHint.BackgroundTransparency = 1
+    DragHint.Text = "Arraste o ícone ⚡ para onde achar melhor"
+    DragHint.TextColor3 = Color3.fromRGB(100, 116, 139)
+    DragHint.Font = Enum.Font.Gotham
+    DragHint.TextSize = 9
+    DragHint.Parent = MainFrame
+
+    CloseBtn.MouseButton1Click:Connect(function()
+        MainFrame.Visible = false
+    end)
 
     -- Ações dos Botões
     ReapplyBtn.MouseButton1Click:Connect(function()
