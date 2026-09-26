@@ -478,11 +478,14 @@ CheckF = function()
   if GetBP("Dragon-Dragon") or GetBP("Gas-Gas") or GetBP("Yeti-Yeti") or GetBP("Kitsune-Kitsune") or GetBP("T-Rex-T-Rex") then return true end
 end
 CheckBoat = function()
-  for i, v in pairs(workspace.Boats:GetChildren()) do
-    if tostring(v.Owner.Value) == tostring(plr.Name) then
-      return v    
-end;
-  end;
+  local boats = workspace:FindFirstChild("Boats")
+  if not boats then return false end
+  for _, v in ipairs(boats:GetChildren()) do
+    local owner = v:FindFirstChild("Owner")
+    if owner and tostring(owner.Value) == tostring(plr.Name) then
+      return v
+    end
+  end
   return false
 end;
 CheckEnemiesBoat = function()
@@ -494,8 +497,11 @@ end;
   return false
 end;
 CheckPirateGrandBrigade = function()
-  for _,v in pairs(workspace.Enemies:GetChildren()) do
-    if (v.Name == "PirateGrandBrigade" or v.Name == "PirateBrigade") and v:FindFirstChild("Health").Value > 0 then
+  local enemies = workspace:FindFirstChild("Enemies")
+  if not enemies then return false end
+  for _, v in ipairs(enemies:GetChildren()) do
+    local health = v:FindFirstChild("Health")
+    if (v.Name == "PirateGrandBrigade" or v.Name == "PirateBrigade") and health and health.Value > 0 then
       return true
     end
   end
@@ -596,7 +602,10 @@ DropFruits = function()
   end
 end
 GetBP = function(v)
-  return plr.Backpack:FindFirstChild(v) or plr.Character:FindFirstChild(v)
+  if not v or not plr then return nil end
+  local backpack = plr:FindFirstChildOfClass("Backpack")
+  local character = plr.Character
+  return (backpack and backpack:FindFirstChild(v)) or (character and character:FindFirstChild(v))
 end
 GetIn = function(Name)
   if not Name then return false end
@@ -4975,7 +4984,7 @@ spawn(function()
 		  elseif GetM("Dark Fragment") < 1 then
 		    if _G.AutoMatSoul and World2 then
 		      local black = GetConnectionEnemies("Darkbeard")
-		      if black then repeat task.wait()Attack.Kill(black, _G.AutoMatSoul)until _G.AutoMatSoul or black.Humanoid.Health <= 0
+		      if black then repeat task.wait()Attack.Kill(black, _G.AutoMatSoul)until not _G.AutoMatSoul or black.Humanoid.Health <= 0 or not black.Parent
 		      else _tp(CFrame.new(3798.4575195313, 13.826690673828, -3399.806640625))
 		      end
 		    else replicated.Remotes.CommF_:InvokeServer("TravelDressrosa")
@@ -5787,7 +5796,11 @@ spawn(function()
           local v = GetConnectionEnemies("Darkbeard")          
 		  if v then repeat wait()Attack.Kill(v,_G.Auto_Def_DarkCoat)until _G.Auto_Def_DarkCoat == false or not v.Parent or v.Humanoid.Health <= 0 end
         elseif not GetBP("Fist of Darkness") and not GetConnectionEnemies("Darkbeard") then
-          repeat wait(.1) _G.AutoFarmChest = true until not _G.Auto_Def_DarkCoat or GetBP("Fist of Darkness") or GetConnectionEnemies("Darkbeard") _G.AutoFarmChest = false
+          repeat
+            wait(.1)
+            _G.AutoFarmChest = true
+          until not _G.Auto_Def_DarkCoat or GetBP("Fist of Darkness") or GetConnectionEnemies("Darkbeard")
+          _G.AutoFarmChest = false
         end
       end)
     end
@@ -6490,7 +6503,11 @@ spawn(function()
             if replicated.Remotes.CommF_:InvokeServer("BuyElectricClaw", "Start") == nil then notween(CFrame.new(-12548, 337, -7481)) end
             replicated.Remotes.CommF_:InvokeServer("BuyElectricClaw")
           elseif GetBP("Electro") and GetBP("Electro").Level.Value < 400 then
-            repeat _G.AutoFarm_Bone = true wait() until not _G.Auto_Electric_Claw or GetBP("Electric Claw") _G.AutoFarm_Bone = false
+            repeat
+              _G.AutoFarm_Bone = true
+              wait()
+            until not _G.Auto_Electric_Claw or GetBP("Electric Claw")
+            _G.AutoFarm_Bone = false
           end
         end       
       end)
@@ -6511,7 +6528,12 @@ spawn(function()
         if plr:FindFirstChild("WeaponAssetCache") then 
         if not GetBP("Dragon Claw") then replicated.Remotes.CommF_:InvokeServer("BlackbeardReward","DragonClaw","2") end        
           if GetBP("Dragon Claw") and GetBP("Dragon Claw").Level.Value >= 400 then replicated.Remotes.CommF_:InvokeServer("Bones","Buy",1,1) replicated.Remotes.CommF_:InvokeServer("BuyDragonTalon")
-          elseif GetBP("Dragon Claw") and GetBP("Dragon Claw").Level.Value < 400 then repeat _G.AutoFarm_Bone = true wait() until not _G.AutoDragonTalon or GetBP("Dragon Talon") _G.AutoFarm_Bone = false
+          elseif GetBP("Dragon Claw") and GetBP("Dragon Claw").Level.Value < 400 then
+            repeat
+              _G.AutoFarm_Bone = true
+              wait()
+            until not _G.AutoDragonTalon or GetBP("Dragon Talon")
+            _G.AutoFarm_Bone = false
           end         
         end
       end)
@@ -6607,7 +6629,7 @@ spawn(function()
            if GetM("Vampire Fang") >= 20 and GetM("Demonic Wisp") >= 20 and GetM("Dark Fragment") <= 1 then
              if World2 then
                local n = GetConnectionEnemies("Darkbeard")
-		       if n then repeat task.wait() Attack.Kill(black,_G.Snaguine) until _G.Snaguine or black.Humanoid.Health <= 0 or not black.Parent
+		       if n then repeat task.wait() Attack.Kill(n,_G.Snaguine) until not _G.Snaguine or not n.Parent or n.Humanoid.Health <= 0
 		      else _tp(CFrame.new(3798.4575195313, 13.826690673828, -3399.806640625))
 		      end
 		    else replicated.Remotes.CommF_:InvokeServer("TravelDressrosa")
@@ -6696,7 +6718,8 @@ spawn(function()
                 else
                   _tp(CFrame.new(-10000000, 31, 37016.25))
                 end
-              until not _G.FindMirage or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Mirage Island") or plr.Character.Humanoid.Sit == false plr.Character.Humanoid.Sit = false
+              until not _G.FindMirage or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Mirage Island") or plr.Character.Humanoid.Sit == false
+              plr.Character.Humanoid.Sit = false
             end
           end
         else
@@ -8423,7 +8446,8 @@ spawn(function()
               else
                 _tp(CFrameSelectedZone)
               end           
-            until _G.SailBoats==false or(CheckShark()and _G.Shark or CheckTerrorShark()and _G.TerrorShark or CheckFishCrew()and _G.MobCrew or CheckPiranha()and _G.Piranha)or CheckSeaBeast()and _G.SeaBeast1 or CheckEnemiesBoat()and _G.FishBoat or _G.Leviathan1 and CheckLeviathan() or _G.HCM and CheckHauntedCrew() or _G.PGB and CheckPirateGrandBrigade() or plr.Character:WaitForChild("Humanoid").Sit==false plr.Character.Humanoid.Sit = false
+            until _G.SailBoats == false or (CheckShark() and _G.Shark or CheckTerrorShark() and _G.TerrorShark or CheckFishCrew() and _G.MobCrew or CheckPiranha() and _G.Piranha) or CheckSeaBeast() and _G.SeaBeast1 or CheckEnemiesBoat() and _G.FishBoat or _G.Leviathan1 and CheckLeviathan() or _G.HCM and CheckHauntedCrew() or _G.PGB and CheckPirateGrandBrigade() or plr.Character:WaitForChild("Humanoid").Sit == false
+            plr.Character.Humanoid.Sit = false
           end
         end
       end)
@@ -8555,7 +8579,8 @@ spawn(function()
                 else
                   _tp(CFrame.new(-10000000, 31, 37016.25))
                 end
-              until not _G.AutofindKitIs or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Kitsune Island") or plr.Character.Humanoid.Sit == false plr.Character.Humanoid.Sit = false
+              until not _G.AutofindKitIs or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Kitsune Island") or plr.Character.Humanoid.Sit == false
+              plr.Character.Humanoid.Sit = false
             end
           end
         else
@@ -8731,7 +8756,8 @@ spawn(function()
               else
                 _tp(CFrame.new(5433, 35, 290))
               end           
-            until _G.SailBoat_Hydra==false or plr.Character:WaitForChild("Humanoid").Sit==false plr.Character.Humanoid.Sit = false
+            until _G.SailBoat_Hydra == false or plr.Character:WaitForChild("Humanoid").Sit == false
+            plr.Character.Humanoid.Sit = false
           end
         end
       end)
@@ -10802,7 +10828,10 @@ Tabs.Combat:AddToggle({
     end
 })
 local function NoCooldown()
-    local dodgeScript = game.Players.LocalPlayer.Character:WaitForChild("Dodge")
+    local character = game.Players.LocalPlayer.Character
+    if not character then return end
+    local dodgeScript = character:FindFirstChild("Dodge") or character:WaitForChild("Dodge", 2)
+    if not dodgeScript then return end
     for i, v in next, getgc() do
         if typeof(v) == "function" then
             local funcEnv = getfenv(v)
