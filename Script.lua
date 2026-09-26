@@ -72,7 +72,7 @@ do
   Num_self = 25
 end
 
-local LUX_DOG_VERSION = "v2.1.5-LITE"
+local LUX_DOG_VERSION = "v2.1.6-LITE-FARMCORE"
 
 local LuxDogCharacterConnections = {}
 
@@ -1454,53 +1454,98 @@ CheckSea = function(b)
     return false
 end
 
-GetQuestPointFromNPC = function(npcName)
-    for _, npc in pairs(workspace.NPCs:GetChildren()) do
-        if npc.Name == npcName and npc:FindFirstChild("HumanoidRootPart") then
-            return npc.HumanoidRootPart.CFrame
-        end
+local function GetFarmState()
+    local character = plr.Character
+    if not character then return nil end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local root = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
+    local data = plr:FindFirstChild("Data")
+    local levelValue = data and data:FindFirstChild("Level")
+
+    return {
+        Character = character,
+        Humanoid = humanoid,
+        Root = root,
+        Level = levelValue and levelValue.Value or Lv or 0,
+    }
+end
+
+local function GetCurrentQuestTitle()
+    local playerGui = plr:FindFirstChild("PlayerGui")
+    local mainGui = playerGui and playerGui:FindFirstChild("Main")
+    local questUI = mainGui and mainGui:FindFirstChild("Quest")
+    local container = questUI and questUI:FindFirstChild("Container")
+    local title = container and container:FindFirstChild("QuestTitle")
+    local label = title and title:FindFirstChild("Title")
+
+    return questUI, (questUI and questUI.Visible or false), (label and label.Text or "")
+end
+
+local function QuestMatchesTarget(title, mobName)
+    if type(title) ~= "string" or title == "" or type(mobName) ~= "string" or mobName == "" then
+        return false
     end
-    for _, npc in pairs(replicated.NPCs:GetChildren()) do
-        if npc.Name == npcName and npc:FindFirstChild("HumanoidRootPart") then
-            return npc.HumanoidRootPart.CFrame
+    return string.find(title, mobName, 1, true) ~= nil
+end
+
+GetQuestPointFromNPC = function(npcName)
+    if type(npcName) ~= "string" or npcName == "" then
+        return nil
+    end
+
+    local npcFolders = {workspace:FindFirstChild("NPCs"), replicated:FindFirstChild("NPCs")}
+    for _, folder in ipairs(npcFolders) do
+        if folder then
+            for _, npc in ipairs(folder:GetChildren()) do
+                if npc.Name == npcName then
+                    local root = npc:FindFirstChild("HumanoidRootPart") or npc.PrimaryPart
+                    if root then
+                        return root.CFrame
+                    end
+                end
+            end
         end
     end
     return nil
 end
 
 GetQuests = function()
-    local lvl = plr.Data.Level.Value
-    local LevelReq = 0
-    local mmb = {}
-    
+    local state = GetFarmState()
+    local lvl = state and state.Level or Lv or 0
+    local bestLevelReq = -1
+    local result = {}
+
     if lvl >= 700 and CheckSea(1) then
-        mmb["Mob"] = "Galley Captain"
-        mmb["NameQuest"] = "FountainQuest"
-        mmb["ID"] = 2
-        mmb["LevelReq"] = 700
+        return {Mob="Galley Captain", NameQuest="FountainQuest", ID=2, LevelReq=700}
     elseif lvl >= 1500 and CheckSea(2) then
-        mmb["Mob"] = "Water Fighter"
-        mmb["NameQuest"] = "ForgottenQuest"
-        mmb["ID"] = 2
-        mmb["LevelReq"] = 1450
-    else
-        for r, v in pairs(Quests) do
-            for id, v1 in pairs(v) do
-                local LvReq = v1.LevelReq
-                for nguoi, tinh in pairs(v1.Task) do
-                    if lvl >= LvReq and LevelReq <= LvReq and v1.Task[nguoi] > 1 and not table.find(blacklistquest, r) then
-                        LevelReq = LvReq
-                        mmb["Mob"] = nguoi
-                        mmb["NameQuest"] = r
-                        mmb["ID"] = id
-                        mmb["LevelReq"] = LvReq
+        return {Mob="Water Fighter", NameQuest="ForgottenQuest", ID=2, LevelReq=1450}
+    end
+
+    for questName, questGroup in pairs(Quests) do
+        if type(questGroup) == "table" and not table.find(blacklistquest, questName) then
+            for id, questData in pairs(questGroup) do
+                local required = tonumber(questData.LevelReq)
+                local tasks = questData.Task
+                if required and required <= lvl and required >= bestLevelReq and type(tasks) == "table" then
+                    for mobName, amount in pairs(tasks) do
+                        if type(mobName) == "string" and tonumber(amount) and tonumber(amount) > 1 then
+                            bestLevelReq = required
+                            result = {
+                                Mob = mobName,
+                                NameQuest = questName,
+                                ID = id,
+                                LevelReq = required,
+                            }
+                            break
+                        end
                     end
                 end
             end
         end
     end
-    
-    return mmb
+
+    return result
 end
 
 GetQuestPoint = function()
@@ -1946,14 +1991,11 @@ task.spawn(function()
                 local Root = char:WaitForChild("HumanoidRootPart")
                 if not Root then return end
 
-                local data = plr:FindFirstChild("Data")
-                local levelValue = data and data:FindFirstChild("Level")
-                local level = levelValue and levelValue.Value or Lv
+                local farmState = GetFarmState()
+                if not farmState or not farmState.Root or not farmState.Humanoid then return end
+                local level = farmState.Level
                 local inSub = IsInSubmergedIsland()
-                local mainGui = plr:FindFirstChild("PlayerGui") and plr.PlayerGui:FindFirstChild("Main")
-                local questUI = mainGui and mainGui:FindFirstChild("Quest")
-                local questTitleObj = questUI and questUI:FindFirstChild("Container") and questUI.Container:FindFirstChild("QuestTitle") and questUI.Container.QuestTitle:FindFirstChild("Title")
-                local QuestTitle = questUI and questUI.Visible and questTitleObj and questTitleObj.Text or ""
+                local questUI, questVisible, QuestTitle = GetCurrentQuestTitle()
 
                 if level >= 2600 and not inSub and not teleporting and not alreadyTeleported then
                     teleporting = true
@@ -2005,13 +2047,13 @@ task.spawn(function()
                         return
                     end
                     
-                    if questUI and questUI.Visible and not string.find(QuestTitle, questData[1], 1, true) then
+                    if questVisible and not QuestMatchesTarget(QuestTitle, questData[1]) then
                         replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                         task.wait(0.2)
                         return
                     end
 
-                    if not questUI or not questUI.Visible then
+                    if not questVisible then
                         local questPos = questData[6]
                         if questPos then
                             _tp(questPos)
@@ -2045,7 +2087,7 @@ task.spawn(function()
                                 _tp(v.HumanoidRootPart.CFrame * CFrame.new(0,20,0))
                                 Attack.Kill(v, _G.Level)
                                 
-                                if not questUI or not questUI.Visible then
+                                if not questVisible then
                                     break
                                 end
                             until not _G.Level or not v.Parent or v.Humanoid.Health <= 0
