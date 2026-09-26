@@ -1,6 +1,6 @@
 --[[
     ============================================================================
-    LUX DOG v2.1.4 | BASE INTERFACE
+    LUX DOG v2.1.5-LITE | BASE INTERFACE
     ============================================================================
 
     EXECUTION ORDER / SECTION INDEX
@@ -66,11 +66,13 @@ do
   Brazier2 = false
   Brazier3 = false
   Sec = 0.1
+  _G.ChooseWP = "Melee"
+  _G.Level = false
   ClickState = 0
   Num_self = 25
 end
 
-local LUX_DOG_VERSION = "v2.1.4"
+local LUX_DOG_VERSION = "v2.1.5-LITE"
 
 local LuxDogCharacterConnections = {}
 
@@ -214,8 +216,10 @@ Attack.DistH = function(model,dist)
   return targetRoot and (Root.Position - targetRoot.Position).Magnitude > dist or false
 end
 Attack.Kill = function(model,Succes)
-  if model and Succes then
-  if not model:GetAttribute("Locked") then model:SetAttribute("Locked",model.HumanoidRootPart.CFrame) end
+  local humanoid = model and model:FindFirstChildOfClass("Humanoid")
+  local root = model and model:FindFirstChild("HumanoidRootPart")
+  if model and Succes and humanoid and root and humanoid.Health > 0 then
+  if not model:GetAttribute("Locked") then model:SetAttribute("Locked",root.CFrame) end
   PosMon = model:GetAttribute("Locked").Position
   BringEnemy()
   EquipWeapon(_G.SelectWeapon)
@@ -1543,21 +1547,104 @@ local MobileButton = Minimizer:CreateMobileMinimizer({
   BackgroundColor3 = Color3.fromRGB(0, 255, 254)
 })
 
+-- Lite UI: only the basic controls are rendered. Feature code remains loaded
+-- so dependencies are preserved while the interface stays small.
+local LUX_DOG_LITE_UI = true
+local NullControl = {}
+setmetatable(NullControl, {
+    __index = function()
+        return function() end
+    end
+})
+
+local NullTab = {}
+function NullTab:AddSection() return NullControl end
+function NullTab:AddParagraph() return NullControl end
+function NullTab:AddDiscordInvite() return NullControl end
+function NullTab:AddToggle() return NullControl end
+function NullTab:AddDropdown() return NullControl end
+function NullTab:AddSlider() return NullControl end
+function NullTab:AddButton() return NullControl end
+function NullTab:AddMultiDropdown() return NullControl end
+
+local function NewFilteredTab(config, allowed)
+    local real = Window:MakeTab(config)
+    local proxy = {}
+
+    function proxy:AddSection(title)
+        if allowed.sections and allowed.sections[title] then
+            return real:AddSection(title)
+        end
+        return NullControl
+    end
+
+    function proxy:AddToggle(data)
+        if data and allowed.toggles and allowed.toggles[data.Name] then
+            return real:AddToggle(data)
+        end
+        return NullControl
+    end
+
+    function proxy:AddDropdown(data)
+        if data and allowed.dropdowns and allowed.dropdowns[data.Name] then
+            return real:AddDropdown(data)
+        end
+        return NullControl
+    end
+
+    function proxy:AddSlider(data)
+        if data and allowed.sliders and allowed.sliders[data.Name] then
+            return real:AddSlider(data)
+        end
+        return NullControl
+    end
+
+    function proxy:AddButton(data)
+        if data and allowed.buttons and allowed.buttons[data.Name] then
+            return real:AddButton(data)
+        end
+        return NullControl
+    end
+
+    function proxy:AddParagraph(data, desc)
+        if allowed.paragraphs and allowed.paragraphs[data] then
+            return real:AddParagraph(data, desc)
+        end
+        return NullControl
+    end
+
+    function proxy:AddDiscordInvite(data)
+        if allowed.discord then
+            return real:AddDiscordInvite(data)
+        end
+        return NullControl
+    end
+
+    return proxy
+end
+
 local Tabs = {
-    Info = Window:MakeTab({ Title = "Info & Status", Icon = "Info" }),
-    Main = Window:MakeTab({ Title = "Farming", Icon = "rbxassetid://7733960981" }),
-    Settings = Window:MakeTab({ Title = "Settings", Icon = "rbxassetid://7734053495" }),
-    Fish = Window:MakeTab({ Title = "Fishing", Icon = "rbxassetid://127664059821666" }),
-    Quests = Window:MakeTab({ Title = "Quests & Items", Icon = "rbxassetid://13075622619" }),
-    SeaEvent = Window:MakeTab({ Title = "Sea Events", Icon = "waves" }),
-    Race = Window:MakeTab({ Title = "Mirage & Race", Icon = "rbxassetid://11162889532" }),
-    Prehistoric = Window:MakeTab({ Title = "Events", Icon = "tent" }),
-    Esp = Window:MakeTab({ Title = "Stats & ESP", Icon = "rbxassetid://7040410130" }),
-    Raids = Window:MakeTab({ Title = "Fruits & Raids", Icon = "rbxassetid://11155986081" }),
-    Combat = Window:MakeTab({ Title = "Combat", Icon = "rbxassetid://13075651575" }),
-    Travel = Window:MakeTab({ Title = "Teleport", Icon = "locate" }),
-    Shop = Window:MakeTab({ Title = "Shop", Icon = "rbxassetid://6031265976" }),
-    Misc = Window:MakeTab({ Title = "Misc", Icon = "rbxassetid://10709783577" })
+    Info = NullTab,
+    Main = NewFilteredTab({ Title = "Farming", Icon = "rbxassetid://7733960981" }, {
+        sections = { ["Farming"] = true },
+        dropdowns = { ["Select Weapon"] = true },
+        toggles = { ["Auto Farm Level"] = true },
+    }),
+    Settings = NewFilteredTab({ Title = "Settings", Icon = "rbxassetid://7734053495" }, {
+        sections = { ["Interface"] = true },
+        dropdowns = { ["UI Scale"] = true },
+    }),
+    Fish = NullTab,
+    Quests = NullTab,
+    SeaEvent = NullTab,
+    Race = NullTab,
+    Prehistoric = NullTab,
+    Esp = NullTab,
+    Raids = NullTab,
+    Combat = NullTab,
+    Travel = NullTab,
+    Shop = NullTab,
+    Misc = NullTab,
 }
 
 
@@ -1566,11 +1653,12 @@ local Tabs = {
 -- 07. TAB: INFO / SERVER STATUS
 -- ============================================================================
 
+if not LUX_DOG_LITE_UI then
 Tabs.Info:AddSection("Information")
 
 Tabs.Info:AddDiscordInvite({
     Title = "Lux Dog | Community",
-    Description = "A community for Lux Dog Users - official scripts, updates, and suport in one place.",
+    Description = "A lightweight base interface for Lux Dog.",
     Banner = "rbxassetid://127632820302449", 
     Logo = "rbxassetid://127632820302449",
     Invite = "https://discord.gg/BjmaR2NEA",
@@ -1780,6 +1868,8 @@ spawn(function()
         BoneCount:SetDesc("You Have: " .. tostring(bones) .. " Bones")
     end
 end)
+end
+
 local RFSubmarineWorkerSpeak = replicated.Modules.Net["RF/SubmarineWorkerSpeak"]
 WeaponDropdown = Tabs.Main:AddDropdown({
     Name = "Select Weapon",
@@ -1790,31 +1880,21 @@ WeaponDropdown = Tabs.Main:AddDropdown({
 end})
 
 
-spawn(function()
-    while task.wait(0.5) do
+task.spawn(function()
+    while task.wait(1) do
         pcall(function()
-            if _G.ChooseWP == "Melee" then
-                for _,v in pairs(plr.Backpack:GetChildren()) do
-                    if v.ToolTip == "Melee" then
-                        _G.SelectWeapon = v.Name
-                    end
-                end
-            elseif _G.ChooseWP == "Sword" then
-                for _,v in pairs(plr.Backpack:GetChildren()) do
-                    if v.ToolTip == "Sword" then
-                        _G.SelectWeapon = v.Name
-                    end
-                end
-            elseif _G.ChooseWP == "Gun" then
-                for _,v in pairs(plr.Backpack:GetChildren()) do
-                    if v.ToolTip == "Gun" then
-                        _G.SelectWeapon = v.Name
-                    end
-                end
-            elseif _G.ChooseWP == "Blox Fruit" then
-                for _,v in pairs(plr.Backpack:GetChildren()) do
-                    if v.ToolTip == "Blox Fruit" then
-                        _G.SelectWeapon = v.Name
+            local category = _G.ChooseWP or "Melee"
+            local backpack = plr:FindFirstChildOfClass("Backpack")
+            local character = plr.Character
+            local containers = {}
+            if backpack then table.insert(containers, backpack) end
+            if character then table.insert(containers, character) end
+
+            for _, container in ipairs(containers) do
+                for _, tool in ipairs(container:GetChildren()) do
+                    if tool:IsA("Tool") and tool.ToolTip == category then
+                        _G.SelectWeapon = tool.Name
+                        return
                     end
                 end
             end
@@ -1857,18 +1937,23 @@ local function IsInSubmergedIsland()
     return (playerXZ - islandXZ).Magnitude < 2000
 end
 
+local FarmTick = 0.15
 task.spawn(function()
-    while task.wait(Sec) do
+    while task.wait(FarmTick) do
         if _G.Level then
             pcall(function()
                 local char = plr.Character or plr.CharacterAdded:Wait()
                 local Root = char:WaitForChild("HumanoidRootPart")
                 if not Root then return end
 
-                local level = plr.Data.Level.Value
+                local data = plr:FindFirstChild("Data")
+                local levelValue = data and data:FindFirstChild("Level")
+                local level = levelValue and levelValue.Value or Lv
                 local inSub = IsInSubmergedIsland()
-                local questUI = plr.PlayerGui.Main.Quest
-                local QuestTitle = questUI.Visible and questUI.Container.QuestTitle.Title.Text or ""
+                local mainGui = plr:FindFirstChild("PlayerGui") and plr.PlayerGui:FindFirstChild("Main")
+                local questUI = mainGui and mainGui:FindFirstChild("Quest")
+                local questTitleObj = questUI and questUI:FindFirstChild("Container") and questUI.Container:FindFirstChild("QuestTitle") and questUI.Container.QuestTitle:FindFirstChild("Title")
+                local QuestTitle = questUI and questUI.Visible and questTitleObj and questTitleObj.Text or ""
 
                 if level >= 2600 and not inSub and not teleporting and not alreadyTeleported then
                     teleporting = true
@@ -1920,13 +2005,13 @@ task.spawn(function()
                         return
                     end
                     
-                    if questUI.Visible and not string.find(QuestTitle, questData[1]) then
+                    if questUI and questUI.Visible and not string.find(QuestTitle, questData[1], 1, true) then
                         replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                         task.wait(0.2)
                         return
                     end
 
-                    if not questUI.Visible then
+                    if not questUI or not questUI.Visible then
                         local questPos = questData[6]
                         if questPos then
                             _tp(questPos)
@@ -1950,25 +2035,28 @@ task.spawn(function()
                     local enemyName = questData[1]
                     
                     local foundMob = false
-                    for _, v in pairs(workspace.Enemies:GetChildren()) do
-                        if v.Name == enemyName and Attack.Alive(v) then
+                    local enemiesFolder = workspace:FindFirstChild("Enemies")
+                    if enemiesFolder then
+                    for _, v in pairs(enemiesFolder:GetChildren()) do
+                        if v.Name == enemyName and Attack.Alive(v) and v:FindFirstChild("HumanoidRootPart") then
                             foundMob = true
                             repeat
                                 task.wait(Sec)
                                 _tp(v.HumanoidRootPart.CFrame * CFrame.new(0,20,0))
                                 Attack.Kill(v, _G.Level)
                                 
-                                if not questUI.Visible then
+                                if not questUI or not questUI.Visible then
                                     break
                                 end
                             until not _G.Level or not v.Parent or v.Humanoid.Health <= 0
                             break
                         end
                     end
+                    end
                     
                     if not foundMob then
                         for _, v in pairs(replicated:GetChildren()) do
-                            if v.Name == enemyName and Attack.Alive(v) then
+                            if v.Name == enemyName and Attack.Alive(v) and v:FindFirstChild("HumanoidRootPart") then
                                 foundMob = true
                                 _tp(v.HumanoidRootPart.CFrame * CFrame.new(0,20,0))
                                 break
