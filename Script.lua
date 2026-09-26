@@ -1,209 +1,69 @@
 --[[
-    Lux Dog - Farm Completo 2026
-    Formato: TXT com código Lua/Luau
-    Uso: Roblox Studio / jogo próprio
+    LUX DOG • FARM LEVEL + UI 2026
+    Formato: TXT com código Luau
 
-    OBJETIVOS:
-    - Progressão automática por nível.
-    - Seleção de missão por nível.
-    - Caminho normal usando Humanoid:MoveTo().
-    - Localização de alvo dentro da pasta configurada.
-    - Ataque através de callback do SEU jogo.
-    - Entrega/retorno da missão através de callback.
-    - Recuperação quando o personagem respawna.
-    - Limite normal + níveis secretos.
-    - Sem reset forçado.
-    - Sem teleporte exploit.
-    - Sem APIs de executor.
+    USO:
+    - Roblox Studio / jogo próprio.
+    - Coloque este código em um LocalScript dentro de StarterPlayerScripts.
+    - A interface é criada automaticamente ao executar.
 
-    COMO USAR:
-    1) Coloque este conteúdo em um ModuleScript no Roblox Studio.
-    2) Dê ao ModuleScript o nome "FarmLevelController_2026".
-    3) Configure QuestProvider, TargetProvider, AttackProvider e TurnInProvider.
-    4) Chame Controller:Start().
+    IMPORTANTE:
+    - O código usa apenas APIs normais do Roblox.
+    - O Farm é um framework para jogo próprio.
+    - Configure a estrutura Workspace.Quests e Workspace.Enemies
+      conforme explicado no fim do arquivo.
 ]]
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 
-local FarmController = {}
-FarmController.__index = FarmController
-
--- =========================================================
+--========================================================--
 -- CONFIGURAÇÃO
--- =========================================================
+--========================================================--
 
-FarmController.NORMAL_CAP = 2800
-FarmController.SECRET_CAP = 3000
+local CONFIG = {
+    NormalCap = 2800,
+    SecretCap = 3000,
 
-FarmController.DEFAULT_MOVE_REACHED_DISTANCE = 8
-FarmController.DEFAULT_TARGET_DISTANCE = 120
-FarmController.DEFAULT_RETRY_DELAY = 0.25
-FarmController.DEFAULT_RESPAWN_DELAY = 1.0
-FarmController.DEFAULT_ATTACK_INTERVAL = 0.15
-FarmController.DEFAULT_QUEST_RECHECK = 0.50
-FarmController.DEFAULT_STATUS_UPDATE = 0.20
+    MoveReachedDistance = 8,
+    TargetDistance = 25,
 
--- Estados internos
-FarmController.States = {
-    Idle = "Idle",
-    Starting = "Starting",
-    ReadingLevel = "ReadingLevel",
-    ResolvingQuest = "ResolvingQuest",
-    GoingToQuest = "GoingToQuest",
-    QuestReady = "QuestReady",
-    GoingToTarget = "GoingToTarget",
-    Fighting = "Fighting",
-    WaitingForTarget = "WaitingForTarget",
-    TurningIn = "TurningIn",
-    NormalCap = "NormalCap",
-    SecretLevels = "SecretLevels",
-    Complete = "Complete",
-    WaitingForCharacter = "WaitingForCharacter",
-    Error = "Error",
+    RetryDelay = 0.35,
+    CharacterWait = 0.25,
+    AttackInterval = 0.20,
 }
 
--- =========================================================
--- CONSTRUTOR
--- =========================================================
+--========================================================--
+-- FARM CONTROLLER
+--========================================================--
 
-function FarmController.new(config)
-    config = config or {}
+local Farm = {
+    Running = false,
+    State = "Idle",
 
-    local self = setmetatable({}, FarmController)
+    Level = 0,
+    Quest = nil,
+    Target = nil,
 
-    self.Config = {
-        MoveReachedDistance = config.MoveReachedDistance or self.DEFAULT_MOVE_REACHED_DISTANCE,
-        TargetDistance = config.TargetDistance or self.DEFAULT_TARGET_DISTANCE,
-        RetryDelay = config.RetryDelay or self.DEFAULT_RETRY_DELAY,
-        RespawnDelay = config.RespawnDelay or self.DEFAULT_RESPAWN_DELAY,
-        AttackInterval = config.AttackInterval or self.DEFAULT_ATTACK_INTERVAL,
-        QuestRecheck = config.QuestRecheck or self.DEFAULT_QUEST_RECHECK,
-        StatusUpdate = config.StatusUpdate or self.DEFAULT_STATUS_UPDATE,
+    Status = "Farm parado.",
+    Error = nil,
 
-        -- Callbacks do seu jogo.
-        QuestProvider = config.QuestProvider,
-        TargetProvider = config.TargetProvider,
-        AttackProvider = config.AttackProvider,
-        TurnInProvider = config.TurnInProvider,
+    Thread = nil,
+    Connections = {},
+}
 
-        -- Callback opcional para a interface.
-        OnStatus = config.OnStatus,
-        OnStateChanged = config.OnStateChanged,
-        OnLevelChanged = config.OnLevelChanged,
-        OnQuestChanged = config.OnQuestChanged,
-        OnTargetChanged = config.OnTargetChanged,
-        OnError = config.OnError,
-    }
-
-    self.Running = false
-    self.State = self.States.Idle
-    self.CurrentLevel = 0
-    self.CurrentQuest = nil
-    self.CurrentTarget = nil
-    self.LastStatus = ""
-    self.LastError = nil
-
-    self._loopThread = nil
-    self._characterConnection = nil
-    self._lastStatusTick = 0
-    self._lastAttackTick = 0
-
-    return self
+local function setState(state)
+    Farm.State = state
 end
 
--- =========================================================
--- UTILITÁRIOS
--- =========================================================
-
-function FarmController:_SetState(newState)
-    if self.State == newState then
-        return
-    end
-
-    self.State = newState
-
-    if typeof(self.Config.OnStateChanged) == "function" then
-        pcall(self.Config.OnStateChanged, newState, self)
-    end
+local function setStatus(status)
+    Farm.Status = tostring(status or "")
 end
 
-function FarmController:_SetStatus(message)
-    message = tostring(message or "")
-
-    if self.LastStatus == message then
-        return
-    end
-
-    self.LastStatus = message
-
-    if typeof(self.Config.OnStatus) == "function" then
-        pcall(self.Config.OnStatus, message, self)
-    end
-end
-
-function FarmController:_SetError(message)
-    self.LastError = tostring(message or "Erro desconhecido")
-    self:_SetState(self.States.Error)
-    self:_SetStatus("Erro: " .. self.LastError)
-
-    if typeof(self.Config.OnError) == "function" then
-        pcall(self.Config.OnError, self.LastError, self)
-    end
-end
-
-function FarmController:_SetQuest(quest)
-    self.CurrentQuest = quest
-
-    if typeof(self.Config.OnQuestChanged) == "function" then
-        pcall(self.Config.OnQuestChanged, quest, self)
-    end
-end
-
-function FarmController:_SetTarget(target)
-    self.CurrentTarget = target
-
-    if typeof(self.Config.OnTargetChanged) == "function" then
-        pcall(self.Config.OnTargetChanged, target, self)
-    end
-end
-
-function FarmController:_SetLevel(level)
-    level = tonumber(level) or 0
-
-    if self.CurrentLevel ~= level then
-        self.CurrentLevel = level
-
-        if typeof(self.Config.OnLevelChanged) == "function" then
-            pcall(self.Config.OnLevelChanged, level, self)
-        end
-    end
-end
-
-function FarmController:_SafeCall(callback, ...)
-    if typeof(callback) ~= "function" then
-        return false, nil, "callback não configurado"
-    end
-
-    local ok, result = pcall(callback, ...)
-    if not ok then
-        return false, nil, tostring(result)
-    end
-
-    return true, result, nil
-end
-
--- =========================================================
--- PERSONAGEM
--- =========================================================
-
-function FarmController:GetCharacter()
-    if not LocalPlayer then
-        return nil, nil, nil
-    end
-
+local function getCharacter()
     local character = LocalPlayer.Character
     if not character then
         return nil, nil, nil
@@ -212,701 +72,897 @@ function FarmController:GetCharacter()
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     local root = character:FindFirstChild("HumanoidRootPart")
 
-    if not humanoid or not root then
-        return character, humanoid, root
-    end
-
-    if humanoid.Health <= 0 then
-        return character, humanoid, root
-    end
-
     return character, humanoid, root
 end
 
-function FarmController:WaitForCharacter(timeout)
-    timeout = tonumber(timeout) or 15
-
-    local startTime = os.clock()
-
-    while self.Running do
-        local character, humanoid, root = self:GetCharacter()
-
-        if character and humanoid and root and humanoid.Health > 0 then
-            return character, humanoid, root
-        end
-
-        if os.clock() - startTime >= timeout then
-            return nil, nil, nil
-        end
-
-        task.wait(0.2)
-    end
-
-    return nil, nil, nil
-end
-
--- =========================================================
--- NÍVEL
--- =========================================================
-
-function FarmController:GetLevel()
-    if not LocalPlayer then
-        return 0
-    end
-
+local function getLevel()
     local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
     if not leaderstats then
         return 0
     end
 
-    local levelObject =
+    local levelValue =
         leaderstats:FindFirstChild("Level")
         or leaderstats:FindFirstChild("level")
         or leaderstats:FindFirstChild("Lvl")
 
-    if not levelObject then
+    if not levelValue then
         return 0
     end
 
-    return tonumber(levelObject.Value) or 0
+    return tonumber(levelValue.Value) or 0
 end
 
-function FarmController:IsNormalCap(level)
-    return level >= self.NORMAL_CAP and level < self.SECRET_CAP
+local function validCharacter()
+    local _, humanoid, root = getCharacter()
+
+    return humanoid ~= nil
+        and root ~= nil
+        and humanoid.Health > 0
 end
 
-function FarmController:IsComplete(level)
-    return level >= self.SECRET_CAP
-end
+local function moveTo(position, reachedDistance)
+    reachedDistance = reachedDistance or CONFIG.MoveReachedDistance
 
--- =========================================================
--- MISSÃO
--- =========================================================
-
--- O QuestProvider do seu jogo deve retornar uma tabela, por exemplo:
--- {
---     Id = "BanditQuest",
---     Name = "Bandit Quest",
---     MinLevel = 1,
---     MaxLevel = 20,
---     QuestPosition = Vector3.new(...),
---     TargetName = "Bandit",
---     TargetPosition = Vector3.new(...),
---     TurnInPosition = Vector3.new(...), -- opcional
--- }
-
-function FarmController:ResolveQuest(level)
-    local ok, quest, err = self:_SafeCall(
-        self.Config.QuestProvider,
-        level,
-        self
-    )
-
-    if not ok then
-        self:_SetError("QuestProvider: " .. tostring(err))
-        return nil
-    end
-
-    if typeof(quest) ~= "table" then
-        self:_SetError("QuestProvider retornou um valor inválido.")
-        return nil
-    end
-
-    if not quest.QuestPosition then
-        self:_SetError("A missão não possui QuestPosition.")
-        return nil
-    end
-
-    if not quest.TargetName and not quest.TargetPosition then
-        self:_SetError("A missão não possui TargetName ou TargetPosition.")
-        return nil
-    end
-
-    return quest
-end
-
-function FarmController:IsQuestActive()
-    return self.CurrentQuest ~= nil
-end
-
-function FarmController:IsQuestComplete()
-    local quest = self.CurrentQuest
-
-    if not quest then
+    if typeof(position) ~= "Vector3" then
         return false
     end
 
-    -- Permitimos que o próprio jogo informe a conclusão.
-    if typeof(quest.IsComplete) == "function" then
-        local ok, result = pcall(quest.IsComplete, quest, self)
-        return ok and result == true
+    local _, humanoid, root = getCharacter()
+
+    if not humanoid or not root or humanoid.Health <= 0 then
+        return false
     end
 
-    if quest.Completed == true then
-        return true
+    humanoid:MoveTo(position)
+
+    local startTime = os.clock()
+
+    while Farm.Running do
+        local _, currentHumanoid, currentRoot = getCharacter()
+
+        if not currentHumanoid or not currentRoot then
+            return false
+        end
+
+        if currentHumanoid.Health <= 0 then
+            return false
+        end
+
+        if (currentRoot.Position - position).Magnitude <= reachedDistance then
+            return true
+        end
+
+        if os.clock() - startTime > 30 then
+            return false
+        end
+
+        currentHumanoid:MoveTo(position)
+        task.wait(0.10)
     end
 
     return false
 end
 
--- =========================================================
--- ALVOS
--- =========================================================
+--========================================================--
+-- DADOS DE QUEST
+--========================================================--
 
-function FarmController:IsTargetValid(target)
-    if not target then
-        return false
+-- Esperado:
+--
+-- Workspace
+-- └── Quests
+--     ├── Quest01
+--     │   ├── QuestPosition (Part)
+--     │   └── TargetPosition (Part)
+--     │   [Attributes: MinLevel, MaxLevel, TargetName]
+--
+-- Uma Quest pode usar:
+-- MinLevel = 1
+-- MaxLevel = 20
+-- TargetName = "Bandit"
+
+local function findQuestForLevel(level)
+    local questsFolder = workspace:FindFirstChild("Quests")
+
+    if not questsFolder then
+        return nil
     end
 
-    if typeof(target) ~= "Instance" then
-        return false
+    local chosen = nil
+
+    for _, quest in ipairs(questsFolder:GetChildren()) do
+        local minLevel = tonumber(quest:GetAttribute("MinLevel")) or 0
+        local maxLevel = tonumber(quest:GetAttribute("MaxLevel")) or math.huge
+
+        if level >= minLevel and level <= maxLevel then
+            local questPosition = quest:FindFirstChild("QuestPosition")
+            local targetPosition = quest:FindFirstChild("TargetPosition")
+
+            if questPosition or targetPosition then
+                chosen = {
+                    Instance = quest,
+                    Id = quest.Name,
+                    Name = quest:GetAttribute("DisplayName") or quest.Name,
+                    MinLevel = minLevel,
+                    MaxLevel = maxLevel,
+                    TargetName = quest:GetAttribute("TargetName"),
+                    QuestPosition = questPosition and questPosition.Position or nil,
+                    TargetPosition = targetPosition and targetPosition.Position or nil,
+                }
+
+                break
+            end
+        end
     end
 
-    if not target.Parent then
+    return chosen
+end
+
+local function findTarget(quest)
+    local enemiesFolder = workspace:FindFirstChild("Enemies")
+
+    if not enemiesFolder then
+        return nil
+    end
+
+    local _, _, playerRoot = getCharacter()
+    if not playerRoot then
+        return nil
+    end
+
+    local nearest = nil
+    local nearestDistance = math.huge
+
+    for _, enemy in ipairs(enemiesFolder:GetChildren()) do
+        local humanoid = enemy:FindFirstChildOfClass("Humanoid")
+        local root =
+            enemy:FindFirstChild("HumanoidRootPart")
+            or enemy.PrimaryPart
+
+        if humanoid and root and humanoid.Health > 0 then
+            if not quest.TargetName or enemy.Name == quest.TargetName then
+                local distance = (playerRoot.Position - root.Position).Magnitude
+
+                if distance < nearestDistance then
+                    nearestDistance = distance
+                    nearest = enemy
+                end
+            end
+        end
+    end
+
+    return nearest
+end
+
+local function targetAlive(target)
+    if not target or not target.Parent then
         return false
     end
 
     local humanoid = target:FindFirstChildOfClass("Humanoid")
-    if humanoid and humanoid.Health <= 0 then
+
+    return humanoid ~= nil and humanoid.Health > 0
+end
+
+--========================================================--
+-- PONTOS DE INTEGRAÇÃO DO JOGO
+--========================================================--
+
+local function startQuest(quest)
+    -- Integre aqui o sistema de missão do seu próprio jogo.
+    --
+    -- Exemplo legítimo:
+    -- local remote = ReplicatedStorage.Remotes.StartQuest
+    -- remote:FireServer(quest.Id)
+    --
+    -- Não inventamos RemoteEvents porque cada jogo possui
+    -- uma arquitetura diferente.
+
+    if quest and quest.Instance then
+        quest.Instance:SetAttribute("ActiveForPlayer", true)
+    end
+
+    return true
+end
+
+local function questComplete(quest)
+    if not quest or not quest.Instance then
+        return false
+    end
+
+    return quest.Instance:GetAttribute("Completed") == true
+end
+
+local function attackTarget(target, quest)
+    -- Integre aqui o sistema de combate do seu próprio jogo.
+    --
+    -- Exemplo:
+    -- ReplicatedStorage.Remotes.Attack:FireServer(target)
+    --
+    -- Sem o sistema real do jogo, mantemos a função neutra.
+
+    if not targetAlive(target) then
         return false
     end
 
     return true
 end
 
-function FarmController:FindTarget(quest)
-    local ok, target, err = self:_SafeCall(
-        self.Config.TargetProvider,
-        quest,
-        self
-    )
-
-    if not ok then
-        self:_SetStatus("Falha ao procurar alvo: " .. tostring(err))
-        return nil
-    end
-
-    if target and self:IsTargetValid(target) then
-        return target
-    end
-
-    return nil
-end
-
--- =========================================================
--- MOVIMENTO NORMAL
--- =========================================================
-
-function FarmController:MoveTo(position, reachedDistance)
-    reachedDistance = tonumber(reachedDistance) or self.Config.MoveReachedDistance
-
-    if typeof(position) ~= "Vector3" then
-        return false, "posição inválida"
-    end
-
-    local character, humanoid, root = self:GetCharacter()
-
-    if not character or not humanoid or not root or humanoid.Health <= 0 then
-        return false, "personagem indisponível"
-    end
-
-    humanoid:MoveTo(position)
-
-    while self.Running do
-        local newCharacter, newHumanoid, newRoot = self:GetCharacter()
-
-        if not newCharacter or not newHumanoid or not newRoot then
-            return false, "personagem perdido"
-        end
-
-        if newHumanoid.Health <= 0 then
-            return false, "personagem derrotado"
-        end
-
-        local distance = (newRoot.Position - position).Magnitude
-
-        if distance <= reachedDistance then
-            return true
-        end
-
-        task.wait(0.1)
-
-        -- Reenvia o MoveTo periodicamente para manter o deslocamento.
-        newHumanoid:MoveTo(position)
-    end
-
-    return false, "controlador parado"
-end
-
--- =========================================================
--- COMBATE DO SEU JOGO
--- =========================================================
-
-function FarmController:AttackTarget(target, quest)
-    if not self:IsTargetValid(target) then
-        return false, "alvo inválido"
-    end
-
-    local now = os.clock()
-
-    if now - self._lastAttackTick < self.Config.AttackInterval then
-        return true
-    end
-
-    self._lastAttackTick = now
-
-    local ok, result, err = self:_SafeCall(
-        self.Config.AttackProvider,
-        target,
-        quest,
-        self
-    )
-
-    if not ok then
-        return false, err
-    end
-
-    if result == false then
-        return false, "AttackProvider recusou o ataque"
-    end
-
+local function turnInQuest(quest)
+    -- Integre aqui o sistema de entrega da missão do seu jogo.
     return true
 end
 
--- =========================================================
--- ENTREGA DA MISSÃO
--- =========================================================
+--========================================================--
+-- CICLO DO FARM
+--========================================================--
 
-function FarmController:TurnInQuest(quest)
-    if not quest then
-        return false, "missão ausente"
-    end
+local function runFarm()
+    while Farm.Running do
 
-    -- Callback principal do jogo.
-    if typeof(self.Config.TurnInProvider) == "function" then
-        local ok, result, err = self:_SafeCall(
-            self.Config.TurnInProvider,
-            quest,
-            self
-        )
-
-        if not ok then
-            return false, err
-        end
-
-        return result ~= false
-    end
-
-    -- Se não houver callback, consideramos que não há entrega
-    -- externa necessária; o próprio jogo pode detectar a conclusão.
-    return true
-end
-
--- =========================================================
--- CICLO COMPLETO DA MISSÃO
--- =========================================================
-
-function FarmController:_RunQuestCycle()
-    local quest = self.CurrentQuest
-
-    if not quest then
-        self:_SetState(self.States.ResolvingQuest)
-        return
-    end
-
-    -- 1. Ir ao NPC da missão.
-    if quest.QuestPosition then
-        self:_SetState(self.States.GoingToQuest)
-        self:_SetStatus("Indo para a missão: " .. tostring(quest.Name or quest.Id or "Quest"))
-
-        local reached, moveError = self:MoveTo(quest.QuestPosition)
-
-        if not reached then
-            self:_SetStatus("Movimento interrompido: " .. tostring(moveError))
-            task.wait(self.Config.RetryDelay)
-            return
-        end
-    end
-
-    -- 2. Ativar/iniciar missão.
-    self:_SetState(self.States.QuestReady)
-
-    if typeof(quest.Start) == "function" then
-        local ok, result = pcall(quest.Start, quest, self)
-
-        if not ok then
-            self:_SetStatus("Não foi possível iniciar a missão.")
-            task.wait(self.Config.RetryDelay)
-            return
-        end
-
-        if result == false then
-            task.wait(self.Config.QuestRecheck)
-            return
-        end
-    end
-
-    -- 3. Procurar alvo.
-    while self.Running and self.CurrentQuest == quest do
-        if self:IsQuestComplete() then
-            self:_SetState(self.States.TurningIn)
-            self:_SetStatus("Missão concluída. Entregando...")
-            self:TurnInQuest(quest)
-            self:_SetQuest(nil)
-            self:_SetTarget(nil)
-            return
-        end
-
-        local target = self:FindTarget(quest)
-
-        if not target then
-            self:_SetState(self.States.WaitingForTarget)
-            self:_SetStatus("Aguardando alvo...")
-            task.wait(self.Config.RetryDelay)
+        -- Personagem
+        if not validCharacter() then
+            setState("WaitingForCharacter")
+            setStatus("Aguardando personagem...")
+            task.wait(CONFIG.CharacterWait)
             continue
         end
 
-        self:_SetTarget(target)
+        -- Nível
+        setState("ReadingLevel")
+        Farm.Level = getLevel()
 
-        local targetRoot =
-            target:FindFirstChild("HumanoidRootPart")
-            or target.PrimaryPart
+        if Farm.Level <= 0 then
+            setStatus("Aguardando nível...")
+            task.wait(CONFIG.RetryDelay)
+            continue
+        end
 
-        -- 4. Ir até o alvo.
-        if targetRoot then
-            self:_SetState(self.States.GoingToTarget)
-            self:_SetStatus("Indo até: " .. tostring(target.Name))
+        -- Limites
+        if Farm.Level >= CONFIG.SecretCap then
+            setState("Complete")
+            setStatus("Progressão concluída no nível " .. tostring(Farm.Level) .. ".")
+            break
+        end
 
-            local reached, moveError = self:MoveTo(
-                targetRoot.Position,
-                self.Config.MoveReachedDistance
-            )
+        if Farm.Level >= CONFIG.NormalCap then
+            setState("SecretLevels")
+            setStatus("Aguardando progressão dos níveis secretos...")
+            task.wait(0.75)
+            continue
+        end
 
-            if not reached then
-                self:_SetStatus("Movimento do alvo interrompido: " .. tostring(moveError))
-                task.wait(self.Config.RetryDelay)
+        -- Quest
+        if not Farm.Quest then
+            setState("ResolvingQuest")
+            setStatus("Procurando missão para nível " .. tostring(Farm.Level) .. "...")
+
+            Farm.Quest = findQuestForLevel(Farm.Level)
+
+            if not Farm.Quest then
+                setStatus("Nenhuma missão configurada para este nível.")
+                task.wait(1)
+                continue
+            end
+
+            startQuest(Farm.Quest)
+        end
+
+        -- Ir para NPC/posição da missão
+        if Farm.Quest.QuestPosition then
+            setState("GoingToQuest")
+            setStatus("Indo para: " .. tostring(Farm.Quest.Name))
+
+            if not moveTo(Farm.Quest.QuestPosition) then
+                task.wait(CONFIG.RetryDelay)
                 continue
             end
         end
 
-        -- 5. Combater.
-        self:_SetState(self.States.Fighting)
-        self:_SetStatus("Combatendo: " .. tostring(target.Name))
+        setState("QuestReady")
 
-        while self.Running and self:IsTargetValid(target) do
-            if self:IsQuestComplete() then
-                self:_SetState(self.States.TurningIn)
-                self:_SetStatus("Missão concluída. Entregando...")
-                self:TurnInQuest(quest)
-                self:_SetQuest(nil)
-                self:_SetTarget(nil)
-                return
+        -- Procurar alvo
+        Farm.Target = findTarget(Farm.Quest)
+
+        if not Farm.Target then
+            setState("WaitingForTarget")
+            setStatus("Aguardando alvo...")
+            task.wait(CONFIG.RetryDelay)
+            continue
+        end
+
+        -- Ir para alvo
+        local targetRoot =
+            Farm.Target:FindFirstChild("HumanoidRootPart")
+            or Farm.Target.PrimaryPart
+
+        if targetRoot then
+            setState("GoingToTarget")
+            setStatus("Indo até: " .. tostring(Farm.Target.Name))
+
+            if not moveTo(targetRoot.Position) then
+                Farm.Target = nil
+                task.wait(CONFIG.RetryDelay)
+                continue
+            end
+        end
+
+        -- Combate
+        setState("Fighting")
+        setStatus("Combatendo: " .. tostring(Farm.Target.Name))
+
+        while Farm.Running and targetAlive(Farm.Target) do
+            if questComplete(Farm.Quest) then
+                break
             end
 
-            -- Aproximação normal se o alvo se afastar.
-            local _, humanoid, root = self:GetCharacter()
-            local enemyRoot =
-                target:FindFirstChild("HumanoidRootPart")
-                or target.PrimaryPart
+            local _, humanoid, root = getCharacter()
 
             if not humanoid or not root or humanoid.Health <= 0 then
-                self:_SetState(self.States.WaitingForCharacter)
-                return
+                break
             end
+
+            local enemyRoot =
+                Farm.Target:FindFirstChild("HumanoidRootPart")
+                or Farm.Target.PrimaryPart
 
             if enemyRoot then
                 local distance = (root.Position - enemyRoot.Position).Magnitude
 
-                if distance > self.Config.TargetDistance then
+                if distance > CONFIG.TargetDistance then
                     humanoid:MoveTo(enemyRoot.Position)
                 end
             end
 
-            local attackOk, attackError = self:AttackTarget(target, quest)
-
-            if not attackOk then
-                self:_SetStatus("Ataque aguardando correção: " .. tostring(attackError))
-            end
-
-            task.wait(self.Config.AttackInterval)
+            attackTarget(Farm.Target, Farm.Quest)
+            task.wait(CONFIG.AttackInterval)
         end
 
-        self:_SetTarget(nil)
+        -- Entrega
+        if Farm.Running and Farm.Quest and questComplete(Farm.Quest) then
+            setState("TurningIn")
+            setStatus("Entregando missão...")
 
-        -- Volta ao ciclo para buscar o próximo alvo.
-        task.wait(self.Config.RetryDelay)
+            turnInQuest(Farm.Quest)
+        end
+
+        Farm.Target = nil
+        Farm.Quest = nil
+
+        task.wait(CONFIG.RetryDelay)
+    end
+
+    if Farm.State ~= "Complete" then
+        setState("Idle")
+        setStatus("Farm parado.")
     end
 end
 
--- =========================================================
--- LOOP PRINCIPAL
--- =========================================================
-
-function FarmController:_Run()
-    self:_SetState(self.States.Starting)
-
-    while self.Running do
-        local character, humanoid, root = self:GetCharacter()
-
-        if not character or not humanoid or not root or humanoid.Health <= 0 then
-            self:_SetState(self.States.WaitingForCharacter)
-            self:_SetStatus("Aguardando personagem...")
-
-            task.wait(self.Config.RespawnDelay)
-            continue
-        end
-
-        self:_SetState(self.States.ReadingLevel)
-
-        local level = self:GetLevel()
-        self:_SetLevel(level)
-
-        if level <= 0 then
-            self:_SetStatus("Nível ainda não disponível...")
-            task.wait(self.Config.RetryDelay)
-            continue
-        end
-
-        if self:IsComplete(level) then
-            self:_SetState(self.States.Complete)
-            self:_SetStatus("Progressão concluída no nível " .. tostring(level) .. ".")
-            break
-        end
-
-        if self:IsNormalCap(level) then
-            self:_SetState(self.States.SecretLevels)
-            self:_SetStatus(
-                "Nível " .. tostring(level) ..
-                " atingiu o limite normal. Aguardando progressão dos níveis secretos."
-            )
-
-            task.wait(self.Config.QuestRecheck)
-            continue
-        end
-
-        if not self.CurrentQuest then
-            self:_SetState(self.States.ResolvingQuest)
-            self:_SetStatus("Selecionando missão para nível " .. tostring(level) .. "...")
-
-            local quest = self:ResolveQuest(level)
-
-            if quest then
-                self:_SetQuest(quest)
-            else
-                task.wait(self.Config.RetryDelay)
-                continue
-            end
-        end
-
-        self:_RunQuestCycle()
-
-        -- Pequena pausa para evitar loop excessivo.
-        task.wait(self.Config.RetryDelay)
+local function startFarm()
+    if Farm.Running then
+        return
     end
 
-    if self.State ~= self.States.Complete
-        and self.State ~= self.States.Error
-        and self.State ~= self.States.Idle then
-        self:_SetState(self.States.Idle)
-    end
-end
+    Farm.Running = true
+    Farm.Error = nil
+    setState("Starting")
+    setStatus("Iniciando Farm Level...")
 
--- =========================================================
--- START / STOP
--- =========================================================
+    Farm.Thread = task.spawn(function()
+        local ok, err = pcall(runFarm)
 
-function FarmController:Start()
-    if self.Running then
-        return false
-    end
-
-    self.Running = true
-    self.LastError = nil
-
-    self._loopThread = task.spawn(function()
-        self:_Run()
+        if not ok then
+            Farm.Error = tostring(err)
+            Farm.Running = false
+            setState("Error")
+            setStatus("Erro: " .. Farm.Error)
+        end
     end)
-
-    return true
 end
 
-function FarmController:Stop()
-    if not self.Running then
-        return false
+local function stopFarm()
+    Farm.Running = false
+    Farm.Thread = nil
+
+    Farm.Quest = nil
+    Farm.Target = nil
+
+    local _, humanoid, root = getCharacter()
+
+    if humanoid and root and humanoid.Health > 0 then
+        humanoid:MoveTo(root.Position)
     end
 
-    self.Running = false
+    setState("Idle")
+    setStatus("Farm parado.")
+end
 
-    local _, humanoid = self:GetCharacter()
+--========================================================--
+-- UI
+--========================================================--
 
-    if humanoid and humanoid.Health > 0 then
-        humanoid:MoveTo(humanoid.RootPart and humanoid.RootPart.Position or Vector3.zero)
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local oldGui = PlayerGui:FindFirstChild("LuxDogFarmUI")
+if oldGui then
+    oldGui:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "LuxDogFarmUI"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = PlayerGui
+
+local function make(className, properties, parent)
+    local object = Instance.new(className)
+
+    for property, value in pairs(properties or {}) do
+        object[property] = value
     end
 
-    self:_SetTarget(nil)
-    self:_SetQuest(nil)
-    self:_SetState(self.States.Idle)
-    self:_SetStatus("Farm parado.")
-
-    self._loopThread = nil
-
-    return true
+    object.Parent = parent
+    return object
 end
 
-function FarmController:Toggle()
-    if self.Running then
-        return self:Stop()
+local shadow = make("Frame", {
+    Name = "Shadow",
+    Size = UDim2.fromOffset(540, 360),
+    Position = UDim2.new(0.5, -270, 0.5, -180),
+    BackgroundTransparency = 0.65,
+    BorderSizePixel = 0,
+}, screenGui)
+
+make("UICorner", {
+    CornerRadius = UDim.new(0, 14)
+}, shadow)
+
+local main = make("Frame", {
+    Name = "Main",
+    Size = UDim2.fromOffset(520, 340),
+    Position = UDim2.new(0.5, -260, 0.5, -170),
+    BackgroundColor3 = Color3.fromRGB(20, 20, 24),
+    BorderSizePixel = 0,
+}, screenGui)
+
+make("UICorner", {
+    CornerRadius = UDim.new(0, 14)
+}, main)
+
+make("UIStroke", {
+    Thickness = 1,
+    Transparency = 0.35,
+    Color = Color3.fromRGB(70, 70, 80)
+}, main)
+
+local topBar = make("Frame", {
+    Size = UDim2.new(1, 0, 0, 50),
+    BackgroundColor3 = Color3.fromRGB(27, 27, 33),
+    BorderSizePixel = 0,
+}, main)
+
+make("UICorner", {
+    CornerRadius = UDim.new(0, 14)
+}, topBar)
+
+make("Frame", {
+    Size = UDim2.new(1, 0, 0, 14),
+    Position = UDim2.new(0, 0, 1, -14),
+    BackgroundColor3 = Color3.fromRGB(27, 27, 33),
+    BorderSizePixel = 0,
+}, topBar)
+
+make("TextLabel", {
+    Size = UDim2.fromOffset(180, 50),
+    Position = UDim2.fromOffset(18, 0),
+    BackgroundTransparency = 1,
+    Text = "LUX DOG",
+    Font = Enum.Font.GothamBold,
+    TextSize = 19,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = Color3.fromRGB(240, 240, 245),
+}, topBar)
+
+local closeButton = make("TextButton", {
+    Size = UDim2.fromOffset(36, 32),
+    Position = UDim2.new(1, -46, 0, 9),
+    BackgroundColor3 = Color3.fromRGB(38, 38, 46),
+    BorderSizePixel = 0,
+    Text = "×",
+    Font = Enum.Font.GothamBold,
+    TextSize = 20,
+    TextColor3 = Color3.fromRGB(235, 235, 240),
+    AutoButtonColor = false,
+}, topBar)
+
+make("UICorner", {
+    CornerRadius = UDim.new(0, 9)
+}, closeButton)
+
+local sidebar = make("Frame", {
+    Size = UDim2.new(0, 135, 1, -62),
+    Position = UDim2.fromOffset(10, 56),
+    BackgroundColor3 = Color3.fromRGB(25, 25, 30),
+    BorderSizePixel = 0,
+}, main)
+
+make("UICorner", {
+    CornerRadius = UDim.new(0, 11)
+}, sidebar)
+
+local content = make("Frame", {
+    Size = UDim2.new(1, -155, 1, -62),
+    Position = UDim2.fromOffset(145, 56),
+    BackgroundTransparency = 1,
+}, main)
+
+local tabFarm = make("TextButton", {
+    Size = UDim2.new(1, -16, 0, 44),
+    Position = UDim2.fromOffset(8, 12),
+    BackgroundColor3 = Color3.fromRGB(55, 55, 67),
+    BorderSizePixel = 0,
+    Text = "  Farming",
+    Font = Enum.Font.GothamSemibold,
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = Color3.fromRGB(245, 245, 250),
+    AutoButtonColor = false,
+}, sidebar)
+
+make("UICorner", {
+    CornerRadius = UDim.new(0, 9)
+}, tabFarm)
+
+local tabSettings = make("TextButton", {
+    Size = UDim2.new(1, -16, 0, 44),
+    Position = UDim2.fromOffset(8, 64),
+    BackgroundColor3 = Color3.fromRGB(34, 34, 41),
+    BorderSizePixel = 0,
+    Text = "  Settings",
+    Font = Enum.Font.GothamSemibold,
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = Color3.fromRGB(200, 200, 208),
+    AutoButtonColor = false,
+}, sidebar)
+
+make("UICorner", {
+    CornerRadius = UDim.new(0, 9)
+}, tabSettings)
+
+local farmPage = make("Frame", {
+    Size = UDim2.fromScale(1, 1),
+    BackgroundTransparency = 1,
+}, content)
+
+local settingsPage = make("Frame", {
+    Size = UDim2.fromScale(1, 1),
+    BackgroundTransparency = 1,
+    Visible = false,
+}, content)
+
+make("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundTransparency = 1,
+    Text = "Farming",
+    Font = Enum.Font.GothamBold,
+    TextSize = 18,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = Color3.fromRGB(240, 240, 245),
+}, farmPage)
+
+local statusLabel = make("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 46),
+    Position = UDim2.fromOffset(0, 38),
+    BackgroundColor3 = Color3.fromRGB(27, 27, 33),
+    BorderSizePixel = 0,
+    Text = "Status: Farm parado.",
+    Font = Enum.Font.Gotham,
+    TextSize = 13,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = Color3.fromRGB(215, 215, 222),
+}, farmPage)
+
+make("UICorner", {
+    CornerRadius = UDim.new(0, 9)
+}, statusLabel)
+
+local levelLabel = make("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 30),
+    Position = UDim2.fromOffset(0, 94),
+    BackgroundTransparency = 1,
+    Text = "Nível: 0",
+    Font = Enum.Font.GothamMedium,
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = Color3.fromRGB(215, 215, 222),
+}, farmPage)
+
+local questLabel = make("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 30),
+    Position = UDim2.fromOffset(0, 122),
+    BackgroundTransparency = 1,
+    Text = "Missão: —",
+    Font = Enum.Font.GothamMedium,
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = Color3.fromRGB(215, 215, 222),
+}, farmPage)
+
+local targetLabel = make("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 30),
+    Position = UDim2.fromOffset(0, 150),
+    BackgroundTransparency = 1,
+    Text = "Alvo: —",
+    Font = Enum.Font.GothamMedium,
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = Color3.fromRGB(215, 215, 222),
+}, farmPage)
+
+local stateLabel = make("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 30),
+    Position = UDim2.fromOffset(0, 178),
+    BackgroundTransparency = 1,
+    Text = "Estado: Idle",
+    Font = Enum.Font.GothamMedium,
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = Color3.fromRGB(215, 215, 222),
+}, farmPage)
+
+local farmButton = make("TextButton", {
+    Size = UDim2.new(1, 0, 0, 50),
+    Position = UDim2.new(0, 0, 1, -50),
+    BackgroundColor3 = Color3.fromRGB(47, 47, 58),
+    BorderSizePixel = 0,
+    Text = "FARM LEVEL  •  OFF",
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    TextColor3 = Color3.fromRGB(240, 240, 245),
+    AutoButtonColor = false,
+}, farmPage)
+
+make("UICorner", {
+    CornerRadius = UDim.new(0, 10)
+}, farmButton)
+
+make("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundTransparency = 1,
+    Text = "Settings",
+    Font = Enum.Font.GothamBold,
+    TextSize = 18,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = Color3.fromRGB(240, 240, 245),
+}, settingsPage)
+
+make("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 52),
+    Position = UDim2.fromOffset(0, 45),
+    BackgroundColor3 = Color3.fromRGB(27, 27, 33),
+    BorderSizePixel = 0,
+    Text = "Farm Level\nLimite normal: 2800\nLimite secreto: 3000",
+    Font = Enum.Font.Gotham,
+    TextSize = 13,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = Color3.fromRGB(215, 215, 222),
+}, settingsPage)
+
+local openButton = make("TextButton", {
+    Size = UDim2.fromOffset(48, 48),
+    Position = UDim2.fromOffset(18, 180),
+    BackgroundColor3 = Color3.fromRGB(27, 27, 33),
+    BorderSizePixel = 0,
+    Text = "LD",
+    Font = Enum.Font.GothamBold,
+    TextSize = 15,
+    TextColor3 = Color3.fromRGB(240, 240, 245),
+    Visible = false,
+    AutoButtonColor = false,
+}, screenGui)
+
+make("UICorner", {
+    CornerRadius = UDim.new(1, 0)
+}, openButton)
+
+--========================================================--
+-- UI ATUALIZAÇÃO
+--========================================================--
+
+local function updateUI()
+    levelLabel.Text = "Nível: " .. tostring(Farm.Level)
+
+    local questName = "—"
+    if Farm.Quest then
+        questName = tostring(Farm.Quest.Name or Farm.Quest.Id or "—")
     end
 
-    return self:Start()
+    local targetName = "—"
+    if Farm.Target then
+        targetName = tostring(Farm.Target.Name or "—")
+    end
+
+    questLabel.Text = "Missão: " .. questName
+    targetLabel.Text = "Alvo: " .. targetName
+    stateLabel.Text = "Estado: " .. tostring(Farm.State)
+    statusLabel.Text = "Status: " .. tostring(Farm.Status)
+
+    if Farm.Running then
+        farmButton.Text = "FARM LEVEL  •  ON"
+        farmButton.BackgroundColor3 = Color3.fromRGB(57, 70, 57)
+    else
+        farmButton.Text = "FARM LEVEL  •  OFF"
+        farmButton.BackgroundColor3 = Color3.fromRGB(47, 47, 58)
+    end
 end
 
-function FarmController:IsRunning()
-    return self.Running
+task.spawn(function()
+    while screenGui.Parent do
+        Farm.Level = getLevel()
+        updateUI()
+        task.wait(0.15)
+    end
+end)
+
+--========================================================--
+-- BOTÕES
+--========================================================--
+
+farmButton.MouseButton1Click:Connect(function()
+    if Farm.Running then
+        stopFarm()
+    else
+        startFarm()
+    end
+
+    updateUI()
+end)
+
+tabFarm.MouseButton1Click:Connect(function()
+    farmPage.Visible = true
+    settingsPage.Visible = false
+
+    tabFarm.BackgroundColor3 = Color3.fromRGB(55, 55, 67)
+    tabSettings.BackgroundColor3 = Color3.fromRGB(34, 34, 41)
+end)
+
+tabSettings.MouseButton1Click:Connect(function()
+    farmPage.Visible = false
+    settingsPage.Visible = true
+
+    tabFarm.BackgroundColor3 = Color3.fromRGB(34, 34, 41)
+    tabSettings.BackgroundColor3 = Color3.fromRGB(55, 55, 67)
+end)
+
+local function hideUI()
+    main.Visible = false
+    shadow.Visible = false
+    openButton.Visible = true
 end
 
-function FarmController:GetStatus()
-    return {
-        Running = self.Running,
-        State = self.State,
-        Level = self.CurrentLevel,
-        Quest = self.CurrentQuest,
-        Target = self.CurrentTarget,
-        Error = self.LastError,
-    }
+local function showUI()
+    main.Visible = true
+    shadow.Visible = true
+    openButton.Visible = false
 end
 
--- =========================================================
--- EXEMPLO DE CONFIGURAÇÃO
--- =========================================================
---
--- Abaixo está um exemplo genérico para o SEU jogo.
--- Adapte nomes/pastas/atributos conforme a estrutura do projeto.
---
--- local ReplicatedStorage = game:GetService("ReplicatedStorage")
--- local Workspace = game:GetService("Workspace")
---
--- local Controller = FarmController.new({
---
---     QuestProvider = function(level, controller)
---         local questsFolder = Workspace:FindFirstChild("Quests")
---         if not questsFolder then
---             return nil
---         end
---
---         local chosenQuest
---
---         for _, quest in ipairs(questsFolder:GetChildren()) do
---             local minLevel = tonumber(quest:GetAttribute("MinLevel")) or 0
---             local maxLevel = tonumber(quest:GetAttribute("MaxLevel")) or math.huge
---
---             if level >= minLevel and level <= maxLevel then
---                 chosenQuest = quest
---                 break
---             end
---         end
---
---         if not chosenQuest then
---             return nil
---         end
---
---         local questPart = chosenQuest:FindFirstChild("QuestPosition")
---         local targetPosition = chosenQuest:FindFirstChild("TargetPosition")
---
---         return {
---             Id = chosenQuest.Name,
---             Name = chosenQuest:GetAttribute("DisplayName") or chosenQuest.Name,
---             MinLevel = chosenQuest:GetAttribute("MinLevel"),
---             MaxLevel = chosenQuest:GetAttribute("MaxLevel"),
---             QuestPosition = questPart and questPart.Position,
---             TargetPosition = targetPosition and targetPosition.Position,
---             TargetName = chosenQuest:GetAttribute("TargetName"),
---             Completed = false,
---             Start = function()
---                 -- Inicie a missão pelo sistema do seu próprio jogo.
---                 return true
---             end,
---             IsComplete = function(q)
---                 return q.Completed == true
---             end,
---         }
---     end,
---
---     TargetProvider = function(quest, controller)
---         local enemiesFolder = Workspace:FindFirstChild("Enemies")
---         if not enemiesFolder then
---             return nil
---         end
---
---         local character = LocalPlayer.Character
---         local root = character and character:FindFirstChild("HumanoidRootPart")
---
---         if not root then
---             return nil
---         end
---
---         local bestTarget
---         local bestDistance = math.huge
---
---         for _, enemy in ipairs(enemiesFolder:GetChildren()) do
---             if quest.TargetName and enemy.Name ~= quest.TargetName then
---                 continue
---             end
---
---             local enemyRoot =
---                 enemy:FindFirstChild("HumanoidRootPart")
---                 or enemy.PrimaryPart
---
---             local enemyHumanoid = enemy:FindFirstChildOfClass("Humanoid")
---
---             if enemyRoot and enemyHumanoid and enemyHumanoid.Health > 0 then
---                 local distance = (root.Position - enemyRoot.Position).Magnitude
---
---                 if distance < bestDistance then
---                     bestDistance = distance
---                     bestTarget = enemy
---                 end
---             end
---         end
---
---         return bestTarget
---     end,
---
---     AttackProvider = function(target, quest, controller)
---         -- Use o sistema de combate do seu próprio jogo.
---         -- Exemplo:
---         -- local CombatRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Attack")
---         -- CombatRemote:FireServer(target)
---
---         -- Mantido sem implementação específica para evitar
---         -- assumir a arquitetura do seu jogo.
---         return true
---     end,
---
---     TurnInProvider = function(quest, controller)
---         -- Use o sistema de entrega de missão do seu próprio jogo.
---         return true
---     end,
---
---     OnStatus = function(message)
---         print("[Lux Dog Farm]", message)
---     end,
---
---     OnStateChanged = function(state)
---         print("[Lux Dog Farm State]", state)
---     end,
---
---     OnLevelChanged = function(level)
---         print("[Lux Dog Level]", level)
---     end,
--- })
---
--- Controller:Start()
---
--- Para parar:
--- Controller:Stop()
---
--- Para ligar/desligar:
--- Controller:Toggle()
+closeButton.MouseButton1Click:Connect(hideUI)
+openButton.MouseButton1Click:Connect(showUI)
 
-return FarmController
+--========================================================--
+-- ARRASTAR JANELA
+--========================================================--
+
+local dragging = false
+local dragStart
+local startPosition
+
+topBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        dragging = true
+        dragStart = input.Position
+        startPosition = main.Position
+    end
+end)
+
+topBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        dragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not dragging then
+        return
+    end
+
+    if input.UserInputType ~= Enum.UserInputType.MouseMovement
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+
+    local delta = input.Position - dragStart
+
+    main.Position = UDim2.new(
+        startPosition.X.Scale,
+        startPosition.X.Offset + delta.X,
+        startPosition.Y.Scale,
+        startPosition.Y.Offset + delta.Y
+    )
+
+    shadow.Position = UDim2.new(
+        main.Position.X.Scale,
+        main.Position.X.Offset + 10,
+        main.Position.Y.Scale,
+        main.Position.Y.Offset + 10
+    )
+end)
+
+--========================================================--
+-- RESPAWN / LIMPEZA
+--========================================================--
+
+table.insert(Farm.Connections, LocalPlayer.CharacterAdded:Connect(function()
+    Farm.Target = nil
+    Farm.Quest = nil
+
+    if Farm.Running then
+        setState("WaitingForCharacter")
+        setStatus("Personagem reaparecendo...")
+    end
+end))
+
+table.insert(Farm.Connections, LocalPlayer.CharacterRemoving:Connect(function()
+    Farm.Target = nil
+end))
+
+-- Fechamento limpo quando o GUI for destruído.
+screenGui.Destroying:Connect(function()
+    Farm.Running = false
+
+    for _, connection in ipairs(Farm.Connections) do
+        pcall(function()
+            connection:Disconnect()
+        end)
+    end
+
+    Farm.Connections = {}
+end)
+
+updateUI()
+
+--========================================================--
+-- FIM
+--========================================================--
+
+-- ESTRUTURA MÍNIMA PARA TESTAR O FARM:
+--
+-- Workspace
+-- ├── Quests
+-- │   └── Quest01
+-- │       ├── QuestPosition (Part)
+-- │       └── TargetPosition (Part)
+-- │       [Attributes]
+-- │           MinLevel = 1
+-- │           MaxLevel = 20
+-- │           TargetName = "Bandit"
+-- │           DisplayName = "Bandit Quest"
+-- │
+-- └── Enemies
+--     └── Bandit
+--         ├── Humanoid
+--         └── HumanoidRootPart
+--
+-- Para indicar que uma quest terminou no exemplo:
+-- Quest01:SetAttribute("Completed", true)
+--
+-- O sistema de combate real deve ser conectado na função
+-- attackTarget(), usando as APIs do seu próprio jogo.
