@@ -30,7 +30,7 @@ do
   Num_self = 25
 end
 
-local LUX_DOG_VERSION = "v2.1.1"
+local LUX_DOG_VERSION = "v2.1.2"
 
 local LuxDogCharacterConnections = {}
 
@@ -111,7 +111,7 @@ EquipWeapon = function(text)
   local backpack = plr:FindFirstChildOfClass("Backpack")
   if not humanoid or not backpack then return false end
 
-  local tool = backpack:FindFirstChild(text)
+  local tool = backpack:FindFirstChild(text) or character:FindFirstChild(text)
   if not tool or not tool:IsA("Tool") then return false end
 
   local success = pcall(function()
@@ -167,8 +167,10 @@ Attack.Kill = function(model,Succes)
   PosMon = model:GetAttribute("Locked").Position
   BringEnemy()
   EquipWeapon(_G.SelectWeapon)
-  local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
-  local ToolTip = Equipped.ToolTip
+  local character = plr.Character
+  local Equipped = character and character:FindFirstChildOfClass("Tool")
+  local ToolTip = Equipped and Equipped.ToolTip
+  if not ToolTip then return end
   if ToolTip == "Blox Fruit" then _tp(model.HumanoidRootPart.CFrame * CFrame.new(0,10,0) * CFrame.Angles(0,math.rad(90),0)) else _tp(model.HumanoidRootPart.CFrame * CFrame.new(0,30,0) * CFrame.Angles(0,math.rad(180),0))end
   if RandomCFrame then wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25)) wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(25, 30, 0)) wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30 ,0)) wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25)) wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30, 0))end
   end
@@ -179,8 +181,10 @@ Attack.Kill2 = function(model,Succes)
   PosMon = model:GetAttribute("Locked").Position
   BringEnemy()
   EquipWeapon(_G.SelectWeapon)
-  local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
-  local ToolTip = Equipped.ToolTip
+  local character = plr.Character
+  local Equipped = character and character:FindFirstChildOfClass("Tool")
+  local ToolTip = Equipped and Equipped.ToolTip
+  if not ToolTip then return end
   if ToolTip == "Blox Fruit" then _tp(model.HumanoidRootPart.CFrame * CFrame.new(0,10,0) * CFrame.Angles(0,math.rad(90),0)) else _tp(model.HumanoidRootPart.CFrame * CFrame.new(0,30,8) * CFrame.Angles(0,math.rad(180),0))end
   if RandomCFrame then wait(0.1)_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25)) wait(0.1)_tp(model.HumanoidRootPart.CFrame * CFrame.new(25, 30, 0)) wait(0.1)_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30 ,0)) wait(0.1)_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25)) wait(0.1)_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30, 0))end
   end
@@ -191,8 +195,10 @@ Attack.KillSea = function(model,Succes)
   PosMon = model:GetAttribute("Locked").Position
   BringEnemy()
   EquipWeapon(_G.SelectWeapon)
-  local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
-  local ToolTip = Equipped.ToolTip
+  local character = plr.Character
+  local Equipped = character and character:FindFirstChildOfClass("Tool")
+  local ToolTip = Equipped and Equipped.ToolTip
+  if not ToolTip then return end
   if ToolTip == "Blox Fruit" then _tp(model.HumanoidRootPart.CFrame * CFrame.new(0,10,0) * CFrame.Angles(0,math.rad(90),0)) else notween(model.HumanoidRootPart.CFrame * CFrame.new(0,50,8)) wait(.85)notween(model.HumanoidRootPart.CFrame * CFrame.new(0,400,0)) wait(1)end
   end
 end
@@ -560,7 +566,10 @@ collectFruits = function(Succes)
   if Succes then
     local Character = plr.Character
     for _,v1 in pairs(workspace:GetChildren()) do
-    if string.find(v1.Name, "Fruit") then v1.Handle.CFrame = Character.HumanoidRootPart.CFrame end
+      local handle = v1:FindFirstChild("Handle")
+      if handle and string.find(v1.Name, "Fruit") then
+        handle.CFrame = Character.HumanoidRootPart.CFrame
+      end
     end
   end
 end
@@ -590,11 +599,20 @@ GetBP = function(v)
   return plr.Backpack:FindFirstChild(v) or plr.Character:FindFirstChild(v)
 end
 GetIn = function(Name)
-  for _ ,v1 in pairs(replicated.Remotes.CommF_:InvokeServer("getInventory")) do
-    if type(v1) == "table" then
-      if v1.Name == Name or plr.Character:FindFirstChild(Name) or plr.Backpack:FindFirstChild(Name) then
+  if not Name then return false end
+  local character = plr.Character
+  local backpack = plr:FindFirstChildOfClass("Backpack")
+  if (character and character:FindFirstChild(Name)) or (backpack and backpack:FindFirstChild(Name)) then
+    return true
+  end
+  local ok, inventory = pcall(function()
+    return replicated.Remotes.CommF_:InvokeServer("getInventory")
+  end)
+  if ok and type(inventory) == "table" then
+    for _, item in pairs(inventory) do
+      if type(item) == "table" and item.Name == Name then
         return true
-	 end
+      end
     end
   end
   return false
@@ -612,17 +630,24 @@ GetM = function(Name)
 return 0
 end
 GetWP = function(nametool)
-  for _,v4 in pairs(replicated.Remotes.CommF_:InvokeServer("getInventory")) do
-    if type(v4) == "table" then
-      if v4.Type == "Sword" then
-        if v4.Name == nametool or plr.Character:FindFirstChild(nametool) or plr.Backpack:FindFirstChild(nametool) then
-	     return true
-	     end
-	   end
+  if not nametool then return false end
+  local character = plr.Character
+  local backpack = plr:FindFirstChildOfClass("Backpack")
+  if (character and character:FindFirstChild(nametool)) or (backpack and backpack:FindFirstChild(nametool)) then
+    return true
+  end
+  local ok, inventory = pcall(function()
+    return replicated.Remotes.CommF_:InvokeServer("getInventory")
+  end)
+  if ok and type(inventory) == "table" then
+    for _, item in pairs(inventory) do
+      if type(item) == "table" and item.Type == "Sword" and item.Name == nametool then
+        return true
       end
     end
+  end
   return false
-end 
+end
 getInfinity_Ability = function(Method, Var)
   if not Root then return end
   if Method == "Soru" and Var then
@@ -1396,6 +1421,8 @@ QuestNeta = function()
     }
 end
 
+-- Lux Dog maintenance pass: UI titles cleaned and defensive runtime fixes applied.
+-- Gameplay sections were intentionally left in their existing order.
 local redzlib = loadstring(game:HttpGet("https://raw.githubusercontent.com/tlredz/Library/refs/heads/main/redz-V5-remake/main.luau"))()
 local Window = redzlib:MakeWindow({
     Title = "Lux Dog : Blox Fruit",
@@ -1413,20 +1440,20 @@ local MobileButton = Minimizer:CreateMobileMinimizer({
 })
 
 local Tabs = {
-    Info = Window:MakeTab({ Title = "Tab Info And Status", Icon = "Info" }),
-    Main = Window:MakeTab({ Title = "Tab Farming", Icon = "rbxassetid://7733960981" }),
-    Settings = Window:MakeTab({ Title = "Tab Setting", Icon = "rbxassetid://7734053495" }),
-    Fish = Window:MakeTab({ Title = "Tab Fishing", Icon = "rbxassetid://127664059821666" }),
-    Quests = Window:MakeTab({ Title = "Tab Quest And Item", Icon = "rbxassetid://13075622619" }),
-    SeaEvent = Window:MakeTab({ Title = "Tab Sea Event", Icon = "waves" }),
-    Race = Window:MakeTab({ Title = "Tab Mirage And Race", Icon = "rbxassetid://11162889532" }),
-    Prehistoric = Window:MakeTab({ Title = "Tab Volcano Event", Icon = "tent" }),
-    Esp = Window:MakeTab({ Title = "Tab Stats And Esp", Icon = "rbxassetid://7040410130" }),
-    Raids = Window:MakeTab({ Title = "Tab Fruit And Raid", Icon = "rbxassetid://11155986081" }),
-    Combat = Window:MakeTab({ Title = "Tab Local Player", Icon = "rbxassetid://13075651575" }),
-    Travel = Window:MakeTab({ Title = "Tab Teleport", Icon = "locate" }),
-    Shop = Window:MakeTab({ Title = "Tab Shopping", Icon = "rbxassetid://6031265976" }),
-    Misc = Window:MakeTab({ Title = "Tab Miscellaneous", Icon = "rbxassetid://10709783577" })
+    Info = Window:MakeTab({ Title = "Info & Status", Icon = "Info" }),
+    Main = Window:MakeTab({ Title = "Farming", Icon = "rbxassetid://7733960981" }),
+    Settings = Window:MakeTab({ Title = "Settings", Icon = "rbxassetid://7734053495" }),
+    Fish = Window:MakeTab({ Title = "Fishing", Icon = "rbxassetid://127664059821666" }),
+    Quests = Window:MakeTab({ Title = "Quests & Items", Icon = "rbxassetid://13075622619" }),
+    SeaEvent = Window:MakeTab({ Title = "Sea Events", Icon = "waves" }),
+    Race = Window:MakeTab({ Title = "Mirage & Race", Icon = "rbxassetid://11162889532" }),
+    Prehistoric = Window:MakeTab({ Title = "Events", Icon = "tent" }),
+    Esp = Window:MakeTab({ Title = "Stats & ESP", Icon = "rbxassetid://7040410130" }),
+    Raids = Window:MakeTab({ Title = "Fruits & Raids", Icon = "rbxassetid://11155986081" }),
+    Combat = Window:MakeTab({ Title = "Combat", Icon = "rbxassetid://13075651575" }),
+    Travel = Window:MakeTab({ Title = "Teleport", Icon = "locate" }),
+    Shop = Window:MakeTab({ Title = "Shop", Icon = "rbxassetid://6031265976" }),
+    Misc = Window:MakeTab({ Title = "Misc", Icon = "rbxassetid://10709783577" })
 }
 
 Tabs.Info:AddSection("Information")
@@ -3105,25 +3132,6 @@ Tabs.Main:AddToggle({
 })
 
 
-local function HopServer()
-    pcall(function()
-        local Http = game:GetService("HttpService")
-        local Servers = {}
-        local req = game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100")
-        local data = Http:JSONDecode(req)
-
-        for i,v in pairs(data.data) do
-            if v.playing < v.maxPlayers then
-                table.insert(Servers, v.id)
-            end
-        end
-        if #Servers > 0 then
-            game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, Servers[math.random(1,#Servers)], game.Players.LocalPlayer)
-        end
-    end)
-end
-
-
 spawn(function()
     while task.wait() do
         if _G.AutoHop_Dough then
@@ -3534,7 +3542,7 @@ Name = "Choose Material",
 			getgenv().SelectMaterial = Value
 		end
 		})
-Toggle = Tabs.Main:AddToggle({
+MaterialFarmToggle = Tabs.Main:AddToggle({
 Name = "Auto Farm Materials", 
 Description = "", 
 Default = false,
@@ -4222,7 +4230,7 @@ Callback = function(Value)
   pSats = Value
 end})
 
-StatsUpg = Tabs.Esp:AddToggle({
+AutoMeleeToggle = Tabs.Esp:AddToggle({
 Name = "Auto Melee", 
 Description = "", 
 Default = false,
@@ -4237,7 +4245,7 @@ spawn(function()
   end
 end)
 
-StatsUpg = Tabs.Esp:AddToggle({
+AutoSwordsToggle = Tabs.Esp:AddToggle({
 Name = "Auto Swords", 
 Description = "", 
 Default = false,
@@ -4251,7 +4259,7 @@ spawn(function()
     end)
   end
 end)
-StatsUpg = Tabs.Esp:AddToggle({
+AutoGunToggle = Tabs.Esp:AddToggle({
 Name = "Auto Gun", 
 Description = "", 
 Default = false,
@@ -4265,7 +4273,7 @@ spawn(function()
     end)
   end
 end)
-StatsUpg = Tabs.Esp:AddToggle({
+AutoBloxFruitToggle = Tabs.Esp:AddToggle({
 Name = "Auto Blox Fruit", 
 Description = "", 
 Default = false,
@@ -4279,7 +4287,7 @@ spawn(function()
     end)
   end
 end)
-StatsUpg = Tabs.Esp:AddToggle({
+AutoDefenseToggle = Tabs.Esp:AddToggle({
 Name = "Auto Defense", 
 Description = "", 
 Default = false,
@@ -4675,7 +4683,7 @@ end)
 
 Tabs.Quests:AddSection("Tushita + Yama")
 
-Q = Tabs.Quests:AddToggle({
+AutoTushitaSwordToggle = Tabs.Quests:AddToggle({
 Name = "Auto Tushita Sword", 
 Description = "", 
 Default = false,
@@ -4714,7 +4722,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoYamaSwordToggle = Tabs.Quests:AddToggle({
 Name = "Auto Yama Sword", 
 Description = "", 
 Default = false,
@@ -5009,7 +5017,7 @@ spawn(function()
         end 
     end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoGetCDKLastQuestToggle = Tabs.Quests:AddToggle({
 Name = "Auto Get CDK [ Last Quest ]", 
 Description = "", 
 Default = false,
@@ -5038,7 +5046,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoYamaCDKToggle = Tabs.Quests:AddToggle({
 Name = "Auto Yama CDK", 
 Description = "", 
 Default = false,
@@ -5176,7 +5184,7 @@ spawn(function()
   end
 end)
 
-Q = Tabs.Quests:AddToggle({
+AutoTushitaCDKToggle = Tabs.Quests:AddToggle({
 Name = "Auto Tushita CDK", 
 Description = "", 
 Default = false,
@@ -5309,7 +5317,7 @@ Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("MysteriousMan","2")
 end})
-Q = Tabs.Quests:AddToggle({
+TweenToLegendarySwordDealerToggle = Tabs.Quests:AddToggle({
 Name = "Tween to Legendary Sword Dealer", 
 Description = "", 
 Default = false,
@@ -5329,7 +5337,7 @@ spawn(function()
 end)
 
 Tabs.Quests:AddSection("Pole / God Enal's")
-Q = Tabs.Quests:AddToggle({
+AutoPoleV1Toggle = Tabs.Quests:AddToggle({
 Name = "Auto Pole V1", 
 Description = "", 
 Default = false,
@@ -5350,7 +5358,7 @@ spawn(function()
     end
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoPoleV2BetaToggle = Tabs.Quests:AddToggle({
 Name = "Auto Pole V2 [Beta]", 
 Description = "", 
 Default = false,
@@ -5404,7 +5412,7 @@ spawn(function()
   end
 end)
 
-Q = Tabs.Quests:AddToggle({
+AutoSaberSwordToggle = Tabs.Quests:AddToggle({
 Name = "Auto Saber Sword", 
 Description = "", 
 Default = false,
@@ -5487,7 +5495,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoCybrogToggle = Tabs.Quests:AddToggle({
 Name = "Auto Cybrog", 
 Description = "", 
 Default = false,
@@ -5506,7 +5514,7 @@ spawn(function()
     end
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoUsoapToggle = Tabs.Quests:AddToggle({
 Name = "Auto Usoap's Hat", 
 Description = "", 
 Default = false,
@@ -5528,7 +5536,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoBisentoV2Toggle = Tabs.Quests:AddToggle({
 Name = "Auto Bisento V2", 
 Description = "", 
 Default = false,
@@ -5552,7 +5560,7 @@ spawn(function()
     end
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoWardenSwordToggle = Tabs.Quests:AddToggle({
 Name = "Auto Warden Sword", 
 Description = "", 
 Default = false,
@@ -5571,7 +5579,7 @@ spawn(function()
     end
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoMarineCoatToggle = Tabs.Quests:AddToggle({
 Name = "Auto Marine Coat", 
 Description = "", 
 Default = false,
@@ -5590,7 +5598,7 @@ spawn(function()
     end
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoSwanCoatToggle = Tabs.Quests:AddToggle({
 Name = "Auto Swan Coat", 
 Description = "", 
 Default = false,
@@ -5611,7 +5619,7 @@ spawn(function()
 end)
 
 Tabs.Quests:AddSection("Rengoku Sword")
-Q = Tabs.Quests:AddToggle({
+AutoRengokuSwordToggle = Tabs.Quests:AddToggle({
 Name = "Auto Rengoku Sword", 
 Description = "", 
 Default = false,
@@ -5630,7 +5638,7 @@ spawn(function()
     end
   end)
 end)
-Q = Tabs.Quests:AddToggle({
+AutoKeyRengokuToggle = Tabs.Quests:AddToggle({
 Name = "Auto Key Rengoku", 
 Description = "", 
 Default = false,
@@ -5654,7 +5662,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoDragonTridentToggle = Tabs.Quests:AddToggle({
 Name = "Auto Dragon Trident", 
 Description = "", 
 Default = false,
@@ -5673,7 +5681,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoLongSwordToggle = Tabs.Quests:AddToggle({
 Name = "Auto Long Sword", 
 Description = "", 
 Default = false,
@@ -5692,7 +5700,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoBlackSpikeyToggle = Tabs.Quests:AddToggle({
 Name = "Auto Black Spikey", 
 Description = "", 
 Default = false,
@@ -5711,7 +5719,7 @@ spawn(function()
     end
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoDarkBladeV3Toggle = Tabs.Quests:AddToggle({
 Name = "Auto Dark Blade V3", 
 Description = "", 
 Default = false,
@@ -5737,7 +5745,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoMidnightBladeToggle = Tabs.Quests:AddToggle({
 Name = "Auto Midnight Blade", 
 Description = "", 
 Default = false,
@@ -5762,7 +5770,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoDarkbeardToggle = Tabs.Quests:AddToggle({
 Name = "Auto Darkbeard", 
 Description = "", 
 Default = false,
@@ -5777,7 +5785,7 @@ spawn(function()
           _tp(CFrame.new(3677.08203125, 62.751937866211, -3144.8332519531))
         elseif GetConnectionEnemies("Darkbeard") then
           local v = GetConnectionEnemies("Darkbeard")          
-		  if v then repeat wait()Attack.Kill(v,_G.Auto_Def_DarkCoat)until _G.Auto_Def_DarkCoat == false or not v.Parent or v.Humanoid.Helath <= 0 end
+		  if v then repeat wait()Attack.Kill(v,_G.Auto_Def_DarkCoat)until _G.Auto_Def_DarkCoat == false or not v.Parent or v.Humanoid.Health <= 0 end
         elseif not GetBP("Fist of Darkness") and not GetConnectionEnemies("Darkbeard") then
           repeat wait(.1) _G.AutoFarmChest = true until not _G.Auto_Def_DarkCoat or GetBP("Fist of Darkness") or GetConnectionEnemies("Darkbeard") _G.AutoFarmChest = false
         end
@@ -5785,7 +5793,7 @@ spawn(function()
     end
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoUnlockedDonSwanToggle = Tabs.Quests:AddToggle({
 Name = "Auto Unlocked DonSwan", 
 Description = "", 
 Default = false,
@@ -5835,7 +5843,7 @@ spawn(function()
     end
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoSwanGlassesToggle = Tabs.Quests:AddToggle({
 Name = "Auto Swan Glasses", 
 Description = "", 
 Default = false,
@@ -5856,7 +5864,7 @@ spawn(function()
 end)
 
 Tabs.Quests:AddSection("Cavender + Twin Hooks + Bigmom")
-Q = Tabs.Quests:AddToggle({
+AutoBigmomToggle = Tabs.Quests:AddToggle({
 Name = "Auto Bigmom", 
 Description = "", 
 Default = false,
@@ -5875,7 +5883,7 @@ spawn(function()
     end
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoCanvendishSwordToggle = Tabs.Quests:AddToggle({
 Name = "Auto Canvendish Sword", 
 Description = "", 
 Default = false,
@@ -5894,7 +5902,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoTwinHooksToggle = Tabs.Quests:AddToggle({
 Name = "Auto Twin Hooks", 
 Description = "", 
 Default = false,
@@ -5915,7 +5923,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoSerpentBowToggle = Tabs.Quests:AddToggle({
 Name = "Auto Serpent Bow", 
 Description = "", 
 Default = false,
@@ -5932,7 +5940,7 @@ spawn(function()
     end
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoLeiAccessoryToggle = Tabs.Quests:AddToggle({
 Name = "Auto Lei Accessory", 
 Description = "", 
 Default = false,
@@ -5953,7 +5961,7 @@ spawn(function()
 end)
 
 Tabs.Quests:AddSection("Buso/Aura Colours")
-Q = Tabs.Quests:AddToggle({
+AutoTeleportBaristaCousinToggle = Tabs.Quests:AddToggle({
 Name = "Auto Teleport Barista Cousin", 
 Description = "", 
 Default = false,
@@ -5977,7 +5985,7 @@ Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("ColorsDealer","2")
 end})
-Q = Tabs.Quests:AddToggle({
+AutoRainbowColorsToggle = Tabs.Quests:AddToggle({
 Name = "Auto Rainbow Colors", 
 Description = "", 
 Default = false,
@@ -6049,7 +6057,7 @@ spawn(function()
     end    
   end)
 end)
-Q = Tabs.Quests:AddToggle({
+AcceptRainbowQuestFasterToggle = Tabs.Quests:AddToggle({
 Name = "Accept Rainbow Quest Faster", 
 Description = "", 
 Default = false,
@@ -6058,7 +6066,7 @@ Callback = function(Value)
 end})
 
 Tabs.Quests:AddSection("Instinct / Observation")
-Q = Tabs.Quests:AddToggle({
+AutoFarmObservationToggle = Tabs.Quests:AddToggle({
 Name = "Auto Farm Observation", 
 Description = "", 
 Default = false,
@@ -6131,7 +6139,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoObservationV2Toggle = Tabs.Quests:AddToggle({
 Name = "Auto Observation V2", 
 Description = "", 
 Default = false,
@@ -6329,7 +6337,7 @@ spawn(function()
     end)
   end
 end)
-Q = Tabs.Quests:AddToggle({
+AutoTrainingDummyToggle = Tabs.Quests:AddToggle({
 Name = "Auto Training Dummy", 
 Description = "", 
 Default = false,
@@ -6871,8 +6879,14 @@ Callback = function(Value)
   LookM = Value
 end})
 function MoveCamtoMoon()
-workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position,Lighting:GetMoonDirection() + workspace.CurrentCamera.CFrame.Position)
-plr.Character.HumanoidRootPart.CFrame = CFrame.new(plr.Character.HumanoidRootPart.Position,Lighting:GetMoonDirection() + plr.Character.HumanoidRootPart.CFrame.Position)
+    local camera = workspace.CurrentCamera
+    local character = plr.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not camera or not root then return end
+
+    local moonDir = Lighting:GetMoonDirection()
+    camera.CFrame = CFrame.new(camera.CFrame.Position, camera.CFrame.Position + moonDir)
+    root.CFrame = CFrame.new(root.Position, root.Position + moonDir)
 end
 task.spawn(function()
   while task.wait() do
@@ -6892,12 +6906,6 @@ Tabs.Race:AddToggle({
         LookMV3 = Value
     end
 })
-
-function MoveCamtoMoon()
-    local moonDir = Lighting:GetMoonDirection()
-    workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, workspace.CurrentCamera.CFrame.Position + moonDir)
-    plr.Character.HumanoidRootPart.CFrame = CFrame.new(plr.Character.HumanoidRootPart.Position, plr.Character.HumanoidRootPart.Position + moonDir)
-end
 
 task.spawn(function()
     while task.wait(0.1) do
@@ -7516,7 +7524,7 @@ GetQuestDracoLevel = function()
   local v371 = {[1] = {NPC = "Dragon Wizard",Command = "Upgrade"}};
   return replicated.Modules.Net:FindFirstChild("RF/InteractDragonQuest"):InvokeServer(unpack(v371))
 end
-Toggle = Tabs.Prehistoric:AddToggle({
+TweenToUpgradeDrocoTrialToggle = Tabs.Prehistoric:AddToggle({
 Name = "Tween To Upgrade Droco Trial", 
 Description = "", 
 Default = false,
@@ -7542,7 +7550,7 @@ spawn(function()
     end)
   end
 end)
-Toggle = Tabs.Prehistoric:AddToggle({
+AutoDragoV1Toggle = Tabs.Prehistoric:AddToggle({
 Name = "Auto Drago (V1)", 
 Description = "", 
 Default = false,
@@ -7599,7 +7607,7 @@ spawn(function()
     end
   end
 end)
-Toggle = Tabs.Prehistoric:AddToggle({
+AutoDragoV3Toggle = Tabs.Prehistoric:AddToggle({
 Name = "Auto Drago (V3)", 
 Description = "", 
 Default = false,
@@ -7622,7 +7630,7 @@ spawn(function()
     end)
   end
 end)
-Toggle = Tabs.Prehistoric:AddToggle({
+AutoRelicDragoTrialBetaToggle = Tabs.Prehistoric:AddToggle({
 Name = "Auto Relic Drago Trial [Beta]", 
 Description = "", 
 Default = false,
@@ -7652,7 +7660,7 @@ spawn(function()
     end
   end
 end)
-Toggle = Tabs.Prehistoric:AddToggle({
+AutoTrainDragoV4Toggle = Tabs.Prehistoric:AddToggle({
 Name = "Auto Train Drago v4", 
 Description = "", 
 Default = false,
@@ -8139,7 +8147,7 @@ spawn(function()
     end)
   end
 end)
-Toggle = Tabs.Prehistoric:AddToggle({
+AutoResetWhenCompleteVolcanoToggle = Tabs.Prehistoric:AddToggle({
 Name = "Auto Reset When Complete Volcano", 
 Description = "", 
 Default = false,
@@ -8361,7 +8369,7 @@ Callback = function()
 })
 Tabs.SeaEvent:AddSection("Choose Sea Event")
 
-Q = Tabs.SeaEvent:AddDropdown({
+SelectBoatsDropdown = Tabs.SeaEvent:AddDropdown({
     Name = "Select Boats",
 	Options = ListSeaBoat,
 	Callback = function(Value)
@@ -8374,13 +8382,13 @@ Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyBoat",_G.SelectedBoat)
 end})
-Q = Tabs.SeaEvent:AddDropdown({
+SeaLevelDropdown = Tabs.SeaEvent:AddDropdown({
 Name = "Select Sea Level",
 Options = ListSeaZone,
 Callback = function(Value)
   _G.DangerSc = Value
 end})
-Q = Tabs.SeaEvent:AddToggle({
+AutoSailBoatToggle = Tabs.SeaEvent:AddToggle({
 Name = "Auto Sail Boat", 
 Description = "", 
 Default = false,
@@ -9680,20 +9688,33 @@ end)
 
 Tabs.Raids:AddSection("Dungeon Event / Raiding")
 DungeonTables = {"Flame","Ice","Quake","Light","Dark","String","Rumble","Magma","Human: Buddha","Sand","Bird: Phoenix","Dough"}
-Q = Tabs.Raids:AddDropdown({
+SelectChipDropdown = Tabs.Raids:AddDropdown({
 Name = "Select Chip",
 Description = "",
 Options = DungeonTables,
 Callback = function(Value)
   _G.SelectChip = Value
 end})
-Q = Tabs.Raids:AddToggle({
+AutoSelectDungeonToggle = Tabs.Raids:AddToggle({
 Name = "Auto Select Dungeon Chip", 
 Description = "", 
 Default = false,
 Callback = function(Value)
   _G.AutoSelectDungeon = Value
 end})
+
+task.spawn(function()
+    while task.wait(1) do
+        if _G.AutoSelectDungeon and _G.SelectChip then
+            pcall(function()
+                if not GetBP("Special Microchip") then
+                    replicated.Remotes.CommF_:InvokeServer("RaidsNpc", "Select", _G.SelectChip)
+                end
+            end)
+        end
+    end
+end)
+
 Tabs.Raids:AddToggle({
     Name = "Get Fruit In Inventory Below 1M",
     Default = false,
@@ -10384,7 +10405,7 @@ spawn(function()
             if _G.AimMethod and ABmethod == "Aim Player" then
                 local target = Players:FindFirstChild(getgenv().PlayersList)
                 if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                    if target.Team ~= plr.Team then
+                    if _G.NoAimTeam or target.Team ~= plr.Team then
                         MousePos = target.Character.HumanoidRootPart.Position
                     end
                 end
@@ -10398,7 +10419,7 @@ spawn(function()
             if _G.AimMethod and ABmethod == "Nearest Aim" then
                 local MaxDistance = math.huge
                 for _, v in pairs(Players:GetPlayers()) do
-                    if v ~= plr and v.Team ~= plr.Team and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+                    if v ~= plr and (_G.NoAimTeam or v.Team ~= plr.Team) and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
                         local Distance = (v.Character.HumanoidRootPart.Position - plr.Character.HumanoidRootPart.Position).Magnitude
                         if Distance < MaxDistance then
                             MaxDistance = Distance
@@ -10443,8 +10464,12 @@ task.spawn(function()
                 end
                 repeat
                     task.wait()
-                    camera.CFrame = CFrame.new(camera.CFrame.Position, closestplayer().Character.HumanoidRootPart.Position)
-                until _G.AimCam == false or Mag > dist
+                    local target = closestplayer()
+                    local targetCharacter = target and target.Character
+                    local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+                    if not targetRoot then break end
+                    camera.CFrame = CFrame.new(camera.CFrame.Position, targetRoot.Position)
+                until not _G.AimCam
             end
         end)
     end
@@ -10791,6 +10816,15 @@ local function NoCooldown()
         end
     end
 end
+
+
+task.spawn(function()
+    while task.wait(0.25) do
+        if getgenv().DodgeNoCD then
+            pcall(NoCooldown)
+        end
+    end
+end)
 
 Tabs.Combat:AddToggle({
     Name = "Instance Mink V3 [ INF ]",
