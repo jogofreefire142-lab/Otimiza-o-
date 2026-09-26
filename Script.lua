@@ -1436,7 +1436,7 @@ Tabs.Info:AddDiscordInvite({
 	Description = "A community for Lux Dog Users - official scripts, updates, and suport in one place.",
 	Banner = "rbxassetid://127632820302449", 
 	Logo = "rbxassetid://127632820302449",
-	Invite = "https://discord.gg/HJbtKcHAw",
+	Invite = "https://discord.gg/BjmaR2NEA",
 	Members = 36, 
 	Online = 67, 
 })
