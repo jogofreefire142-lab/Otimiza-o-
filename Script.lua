@@ -1,6 +1,6 @@
 --[[
     ============================================================================
-    LUX DOG v2.1.5-LITE | BASE INTERFACE
+    LUX DOG v2.1.9-LITE | SETTINGS FIXED
     ============================================================================
 
     EXECUTION ORDER / SECTION INDEX
@@ -72,7 +72,7 @@ do
   Num_self = 25
 end
 
-local LUX_DOG_VERSION = "v2.1.6-LITE-FARMCORE"
+local LUX_DOG_VERSION = "v2.1.9-LITE-FARMCORE"
 
 local LuxDogCharacterConnections = {}
 
@@ -1454,6 +1454,27 @@ CheckSea = function(b)
     return false
 end
 
+-- Blox Fruits Update 30: normal grinding ends at 2800; Secret Levels extend the cap to 3000.
+local NORMAL_FARM_CAP = 2800
+local SECRET_LEVEL_CAP = 3000
+
+local function IsSecretLevel(level)
+    level = tonumber(level) or 0
+    return level > NORMAL_FARM_CAP and level <= SECRET_LEVEL_CAP
+end
+
+local function GetFarmProgress(level)
+    level = tonumber(level) or 0
+    if level >= SECRET_LEVEL_CAP then
+        return "MAX"
+    elseif IsSecretLevel(level) then
+        return "SECRET"
+    elseif level >= NORMAL_FARM_CAP then
+        return "NORMAL_CAP"
+    end
+    return "NORMAL"
+end
+
 local function GetFarmState()
     local character = plr.Character
     if not character then return nil end
@@ -1676,8 +1697,28 @@ local Tabs = {
         toggles = { ["Auto Farm Level"] = true },
     }),
     Settings = NewFilteredTab({ Title = "Settings", Icon = "rbxassetid://7734053495" }, {
-        sections = { ["Interface"] = true },
-        dropdowns = { ["UI Scale"] = true },
+        sections = {
+            ["Interface"] = true,
+            ["Settings / Configure"] = true,
+        },
+        dropdowns = {
+            ["UI Scale"] = true,
+        },
+        sliders = {
+            ["Hop Delay (Minutes)"] = true,
+        },
+        toggles = {
+            ["Fast Attack"] = true,
+            ["Bring Mobs"] = true,
+            ["Auto Hop Server with time"] = true,
+            ["Auto Set Spawn Point"] = true,
+            ["Auto Turn on Buso"] = true,
+            ["Auto Haki Observation"] = true,
+            ["Remove Hit VFX"] = true,
+            ["Remove Death & Respawned VFX"] = true,
+            ["Disable Notify"] = true,
+            ["Anti AFK"] = true,
+        },
     }),
     Fish = NullTab,
     Quests = NullTab,
@@ -1961,15 +2002,8 @@ FarmLevel = Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.Level = Value
-        if not Value then
-            alreadyTeleported = false
-            teleporting = false
-        end
     end
 })
-
-local alreadyTeleported = false
-local teleporting = false
 
 local function IsInSubmergedIsland()
     local char = plr.Character
@@ -1997,49 +2031,14 @@ task.spawn(function()
                 local inSub = IsInSubmergedIsland()
                 local questUI, questVisible, QuestTitle = GetCurrentQuestTitle()
 
-                if level >= 2600 and not inSub and not teleporting and not alreadyTeleported then
-                    teleporting = true
-                    
-                    local npcPos = CFrame.new(-16269.7041, 25.2288494, 1373.65955)
-                    local teleportAttempts = 0
-                    
-                    repeat 
-                        task.wait(Sec)
-                        _tp(npcPos)
-                        teleportAttempts = teleportAttempts + 1
-                    until not _G.Level or (Root.Position - npcPos.Position).Magnitude <= 8 or teleportAttempts > 20
+                local progress = GetFarmProgress(level)
 
-                    if not _G.Level then 
-                        teleporting = false
-                        return 
-                    end
-
-                    task.wait(1)
-                    
-                    pcall(function()
-                        local args = {"TravelToSubmergedIsland"} 
-                        game:GetService("ReplicatedStorage").Modules.Net:FindFirstChild("RF/SubmarineWorkerSpeak"):InvokeServer(unpack(args))
-                    end)
-
-                    local timeout = tick()
-                    repeat 
-                        task.wait(0.5)
-                        local currentInSub = IsInSubmergedIsland()
-                        local farFromNPC = (Root.Position - npcPos.Position).Magnitude > 50
-                        
-                        if currentInSub or farFromNPC then
-                            break
-                        end
-                    until not _G.Level or tick() - timeout > 15
-
-                    task.wait(2)
-                    alreadyTeleported = true
-                    teleporting = false
-                    
-                elseif inSub or level < 2600 then
-                    alreadyTeleported = true
-                    teleporting = false
-
+                if progress == "MAX" or progress == "SECRET" or level >= NORMAL_FARM_CAP then
+                    -- O grind comum termina no nível 2800.
+                    -- 2801-3000 são Secret Levels e não devem ser tratados como quests normais.
+                    task.wait(0.75)
+                    return
+                else
                     local questData = QuestNeta()
                     
                     if not questData or not questData[1] then
@@ -2117,8 +2116,6 @@ task.spawn(function()
                 end
             end)
         else
-            teleporting = false
-            alreadyTeleported = false
         end
     end
 end)
@@ -4401,19 +4398,36 @@ spawn(function()
   end
 end)      
 
+local LuxDogAntiAFKConnection
 Tabs.Settings:AddToggle({
     Name = "Anti AFK",
     Default = true,
     Callback = function(Value)
-        if Value then
-            local vu = game:GetService("VirtualUser")
-            repeat wait() until game:IsLoaded()
-            game:GetService("Players").LocalPlayer.Idled:Connect(function()
-                vu:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-                wait(1)
-                vu:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-            end)
+        if LuxDogAntiAFKConnection then
+            LuxDogAntiAFKConnection:Disconnect()
+            LuxDogAntiAFKConnection = nil
         end
+
+        if not Value then
+            return
+        end
+
+        local vu = game:GetService("VirtualUser")
+        local players = game:GetService("Players")
+        local localPlayer = players.LocalPlayer
+        if not localPlayer then
+            return
+        end
+
+        LuxDogAntiAFKConnection = localPlayer.Idled:Connect(function()
+            pcall(function()
+                local camera = workspace.CurrentCamera
+                if not camera then return end
+                vu:Button2Down(Vector2.new(0, 0), camera.CFrame)
+                task.wait(1)
+                vu:Button2Up(Vector2.new(0, 0), camera.CFrame)
+            end)
+        end)
     end
 })
 
@@ -12314,6 +12328,11 @@ task.spawn(function()
     end)
 end)
 -- ============================================================================
+-- SETTINGS FIX - v2.1.9
+-- Settings now exposes only the useful Lite controls; experimental/duplicate
+-- controls remain hidden through NewFilteredTab without deleting their code.
+-- Anti AFK uses one managed Idled connection to avoid stacking listeners.
+--
 -- MAINTENANCE NOTE - v2.1.4 BASE INTERFACE
 -- The UI Scale control is kept in Settings so the Main tab remains focused on
 -- gameplay controls. No gameplay section or functional dependency was removed
