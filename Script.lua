@@ -409,29 +409,31 @@ Useskills = function(weapon, skill)
     SafeKeyPress("Y")
   end
 end
-if not RIPLODER_STUDIO_SAFE_MODE and getrawmetatable and setreadonly and newcclosure and getnamecallmethod then
-  local gg = getrawmetatable(game)
-  if gg and gg.__namecall then
-    local old = gg.__namecall
-    setreadonly(gg, false)
-    gg.__namecall = newcclosure(function(...)
-      local method = getnamecallmethod()
-      local args = {...}    
-      if tostring(method) == "FireServer" then
-        if tostring(args[1]) == "RemoteEvent" then
-          if tostring(args[2]) ~= "true" and tostring(args[2]) ~= "false" then
-            if (_G.FarmMastery_G and not SoulGuitar) or (_G.FarmMastery_Dev) or (_G.FarmBlazeEM) or (_G.Prehis_Skills) or (_G.SeaBeast1 or _G.FishBoat or _G.PGB or _G.Leviathan1 or _G.Complete_Trials) or (_G.AimMethod and ABmethod == "Aim Player") or (_G.AimMethod and ABmethod == "Nearest Aim") then
-              args[2] = MousePos
-              return old(unpack(args))
+pcall(function()
+  if not RIPLODER_STUDIO_SAFE_MODE and getrawmetatable and setreadonly and newcclosure and getnamecallmethod then
+    local gg = getrawmetatable(game)
+    if gg and gg.__namecall then
+      local old = gg.__namecall
+      setreadonly(gg, false)
+      gg.__namecall = newcclosure(function(...)
+        local method = getnamecallmethod()
+        local args = {...}
+        if tostring(method) == "FireServer" then
+          if tostring(args[1]) == "RemoteEvent" then
+            if tostring(args[2]) ~= "true" and tostring(args[2]) ~= "false" then
+              if (_G.FarmMastery_G and not SoulGuitar) or (_G.FarmMastery_Dev) or (_G.FarmBlazeEM) or (_G.Prehis_Skills) or (_G.SeaBeast1 or _G.FishBoat or _G.PGB or _G.Leviathan1 or _G.Complete_Trials) or (_G.AimMethod and ABmethod == "Aim Player") or (_G.AimMethod and ABmethod == "Nearest Aim") then
+                args[2] = MousePos
+                return old(unpack(args))
+              end
             end
           end
         end
-      end
-      return old(...)
-    end)
-    setreadonly(gg, true)
+        return old(...)
+      end)
+      setreadonly(gg, true)
+    end
   end
-end
+end)
 GetConnectionEnemies = function(a)
   for i,v in pairs(replicated:GetChildren()) do
     if v:IsA("Model") and  ((typeof(a) == "table" and table.find(a, v.Name)) or v.Name == a) and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
@@ -700,9 +702,18 @@ local function SafeKeyPress(key)
 end
 
 local function SafeHttpGet(url)
+    if type(url) ~= "string" or url == "" then
+        return nil
+    end
     if RIPLODER_STUDIO_SAFE_MODE then
         warn("Rip_loder: HTTP requests from this client are disabled in Roblox Studio; use a server-side HttpService implementation in your own game.")
         return nil
+    end
+    local ok, result = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if ok then
+        return result
     end
     return nil
 end
@@ -1426,6 +1437,39 @@ QuestNeta = function()
     }
 end
 
+warn("[Rip_loder] entrando na inicialização da interface")
+local redzlib = loadstring(game:HttpGet("https://raw.githubusercontent.com/tlredz/Library/refs/heads/main/redz-V5-remake/main.luau"))()
+local Window = redzlib:MakeWindow({
+    Title = "Rip_loder : Blox Fruit",
+    SubTitle = "Rip_loder 2026",
+    SaveFolder = "oknaiget.json"
+})
+
+local Minimizer = Window:NewMinimizer({
+  KeyCode = Enum.KeyCode.LeftControl
+})
+
+local MobileButton = Minimizer:CreateMobileMinimizer({
+  Image = "rbxassetid://127632820302449",
+  BackgroundColor3 = Color3.fromRGB(0, 255, 254)
+})
+
+local Tabs = {
+    Info = Window:MakeTab({ Title = "Info & Status", Icon = "Info" }),
+    Main = Window:MakeTab({ Title = "Farming", Icon = "rbxassetid://7733960981" }),
+    Settings = Window:MakeTab({ Title = "Settings", Icon = "rbxassetid://7734053495" }),
+    Fish = Window:MakeTab({ Title = "Fishing", Icon = "rbxassetid://127664059821666" }),
+    Quests = Window:MakeTab({ Title = "Quests & Items", Icon = "rbxassetid://13075622619" }),
+    SeaEvent = Window:MakeTab({ Title = "Sea Events", Icon = "waves" }),
+    Race = Window:MakeTab({ Title = "Race & Mirage", Icon = "rbxassetid://11162889532" }),
+    Prehistoric = Window:MakeTab({ Title = "Prehistoric", Icon = "tent" }),
+    Esp = Window:MakeTab({ Title = "ESP & Stats", Icon = "rbxassetid://7040410130" }),
+    Raids = Window:MakeTab({ Title = "Fruits & Raids", Icon = "rbxassetid://11155986081" }),
+    Combat = Window:MakeTab({ Title = "Local Player", Icon = "rbxassetid://13075651575" }),
+    Travel = Window:MakeTab({ Title = "Travel", Icon = "locate" }),
+    Shop = Window:MakeTab({ Title = "Shop", Icon = "rbxassetid://6031265976" }),
+    Misc = Window:MakeTab({ Title = "Misc", Icon = "rbxassetid://10709783577" })
+}
 local function GetQuestUI()
     local playerGui = plr:FindFirstChild("PlayerGui")
     local main = playerGui and playerGui:FindFirstChild("Main")
@@ -1620,38 +1664,6 @@ task.spawn(function()
     end
 end)
 
-local redzlib = loadstring(game:HttpGet("https://raw.githubusercontent.com/tlredz/Library/refs/heads/main/redz-V5-remake/main.luau"))()
-local Window = redzlib:MakeWindow({
-    Title = "Rip_loder : Blox Fruit",
-    SubTitle = "Rip_loder 2026",
-    SaveFolder = "oknaiget.json"
-})
-
-local Minimizer = Window:NewMinimizer({
-  KeyCode = Enum.KeyCode.LeftControl
-})
-
-local MobileButton = Minimizer:CreateMobileMinimizer({
-  Image = "rbxassetid://127632820302449",
-  BackgroundColor3 = Color3.fromRGB(0, 255, 254)
-})
-
-local Tabs = {
-    Info = Window:MakeTab({ Title = "Info & Status", Icon = "Info" }),
-    Main = Window:MakeTab({ Title = "Farming", Icon = "rbxassetid://7733960981" }),
-    Settings = Window:MakeTab({ Title = "Settings", Icon = "rbxassetid://7734053495" }),
-    Fish = Window:MakeTab({ Title = "Fishing", Icon = "rbxassetid://127664059821666" }),
-    Quests = Window:MakeTab({ Title = "Quests & Items", Icon = "rbxassetid://13075622619" }),
-    SeaEvent = Window:MakeTab({ Title = "Sea Events", Icon = "waves" }),
-    Race = Window:MakeTab({ Title = "Race & Mirage", Icon = "rbxassetid://11162889532" }),
-    Prehistoric = Window:MakeTab({ Title = "Prehistoric", Icon = "tent" }),
-    Esp = Window:MakeTab({ Title = "ESP & Stats", Icon = "rbxassetid://7040410130" }),
-    Raids = Window:MakeTab({ Title = "Fruits & Raids", Icon = "rbxassetid://11155986081" }),
-    Combat = Window:MakeTab({ Title = "Local Player", Icon = "rbxassetid://13075651575" }),
-    Travel = Window:MakeTab({ Title = "Travel", Icon = "locate" }),
-    Shop = Window:MakeTab({ Title = "Shop", Icon = "rbxassetid://6031265976" }),
-    Misc = Window:MakeTab({ Title = "Misc", Icon = "rbxassetid://10709783577" })
-}
 
 Tabs.Info:AddSection("Information")
 
