@@ -1478,19 +1478,6 @@ local function IsInSubmergedIsland()
     return (playerXZ - islandXZ).Magnitude < 2000
 end
 
-FarmLevel = Tabs.Main:AddToggle({
-    Name = "Auto Farm Level",
-    Description = "",
-    Default = false,
-    Callback = function(Value)
-        _G.Level = Value
-        teleporting = false
-        if not Value then
-            alreadyTeleported = false
-        end
-    end
-})
-
 task.spawn(function()
     while task.wait(0.15) do
         if not _G.Level then
@@ -1600,15 +1587,6 @@ task.spawn(function()
         end)
     end
 end)
-
-ClosetMons = Tabs.Main:AddToggle({
-    Name = "Auto Farm Nearest",
-    Description = "",
-    Default = false,
-    Callback = function(Value)
-        _G.AutoFarmNear = Value
-    end
-})
 
 task.spawn(function()
     while task.wait(0.15) do
