@@ -1,61 +1,4 @@
-Rip_loder 2026 — Fase 16 Hotfix — CÓDIGO COMPLETO
 
-============================================================
-PARTE 1 — CÓDIGO PRINCIPAL COMPLETO (BASE FASE 13)
-============================================================
-
--- Rip_loder 2026 — Fase 13: Core Hardening
--- UI, tabs, controls, and English organization preserved.
--- Updates:
---   * stable local service cache for future Studio-native code;
---   * safe Root/Energy refresh on respawn;
---   * resilient Data.Level refresh;
---   * legacy wait/spawn calls normalized when present;
---   * no original content removed and no executor automation added.
-
--- Rip_loder 2026 — Fase 12: Stability & Studio-safe initialization
--- Preserva a UI e a organização em inglês.
--- Correções:
---   * inicialização protegida de Data/Level/Energy/Enemies;
---   * carregamento inicial mais robusto;
---   * proteção contra Tool inexistente nas rotinas que consultam ToolTip;
---   * uso contínuo de task.wait/task.spawn.
--- Dependências de executor não foram ampliadas nem simuladas.
-
--- Rip_loder 2026 — Fase 11: Studio portability cleanup
--- Preserves the existing UI and game-specific structure.
--- Changes: executor-only global environment calls (getgenv) now use Roblox's _G;
--- keyboard and VirtualUser helpers fail safely when unavailable in Studio.
-
--- Rip_loder 2026 — Fase 10: consolidação final
--- UI/interface preservada.
--- Ajustes objetivos: safe-mode scope, getgenv compatibility shim, centralized safe teleport,
--- Studio-safe HTTP boundary for server hopping, clipboard guard, and key-input guard.
--- Executor-only introspection/remotes are not emulated.
-
--- Rip_loder 2026 — Fase 9: auditoria de integração e Studio-safe guard
--- UI mantida sem alteração.
--- Esta fase não adiciona automação de terceiros; ela apenas impede que APIs de executor
--- e rotinas de manipulação de remotes sejam executadas durante o Play/Test do Studio.
-
--- Rip_loder 2026 — Fase 8: Studio compatibility boundary
--- UI/interface preserved.
--- Safe modernization only; executor-only automation is intentionally not emulated.
--- Studio-native ProximityPrompt handling should use ProximityPrompt/ProximityPromptService.
-
--- Rip_loder 2026 — Fase 7: revisão geral de compatibilidade e erros objetivos
--- Mantida a UI/interface existente.
--- Correções desta fase:
---   * task.task.spawn -> task.spawn
---   * CurrentCamera.CoordinateFrame -> CurrentCamera.CFrame
---   * CurrentCamera ... .p -> .Position
--- Não foram alteradas as opções visuais da interface.
-
--- Rip_loder 2026 - Studio modernization pass
--- Applied: task.wait/task.spawn and RBXScriptSignal:Connect modernization.
--- Important: some sections of the original source use executor-only APIs or deprecated
--- teleport patterns; those are intentionally NOT rewritten blindly because they require
--- a server/client architecture change in Roblox Studio.
 
 do
   ply = game.Players
@@ -12612,10 +12555,3 @@ return Actions
 
 
 ============================================================
-ORGANIZAÇÃO PARA TESTE
-============================================================
-
-1. A Parte 1 é o código principal completo, preservado integralmente da base Fase 13.
-2. A Parte 2 é um Script separado para ServerScriptService.
-3. A Parte 3 é um LocalScript/ModuleScript separado conforme a integração escolhida no seu projeto.
-4. Não cole as três partes dentro do mesmo Script executável.
