@@ -7,7 +7,8 @@
 do
   ply = game.Players
   plr = ply.LocalPlayer
-  Root = plr.Character.HumanoidRootPart
+  local character = plr.Character or plr.CharacterAdded:Wait()
+  Root = character:WaitForChild("HumanoidRootPart")
   replicated = game:GetService("ReplicatedStorage")
   Lv = game.Players.LocalPlayer.Data.Level.Value
   TeleportService = game:GetService("TeleportService")
@@ -35,6 +36,26 @@ do
   ClickState = 0
   Num_self = 25
 end
+
+local function RefreshCharacter()
+    local character = plr.Character
+    if not character or not character.Parent then
+        return false
+    end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        return false
+    end
+    Root = hrp
+    return true
+end
+
+plr.CharacterAdded:Connect(function(character)
+    local hrp = character:WaitForChild("HumanoidRootPart", 10)
+    if hrp then
+        Root = hrp
+    end
+end)
 
 repeat local start = plr.PlayerGui:WaitForChild("Main"):WaitForChild("Loading") and game:IsLoaded() task.wait() until start
 World1 = game.PlaceId == 2753915549 or game.PlaceId == 85211729168715
@@ -80,20 +101,48 @@ weaponSc = function(weapon)
 end
 local Attack = {}
 Attack.__index = Attack
-Attack.Alive = function(model) if not model then return end local Humanoid = model:FindFirstChild("Humanoid") return Humanoid and Humanoid.Health > 0 end
-Attack.Pos = function(model,dist) return (Root.Position - mode.Position).Magnitude <= dist end
-Attack.Dist = function(model,dist) return (Root.Position - model:FindFirstChild("HumanoidRootPart").Position).Magnitude <= dist end
-Attack.DistH = function(model,dist) return (Root.Position - model:FindFirstChild("HumanoidRootPart").Position).Magnitude > dist end
+Attack.Alive = function(model)
+    if not model then return false end
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    return humanoid and humanoid.Health > 0
+end
+Attack.Pos = function(model,dist)
+    if not model or not Root then return false end
+    local pivot = model:IsA("Model") and model:GetPivot() or model
+    return (Root.Position - pivot.Position).Magnitude <= dist
+end
+Attack.Dist = function(model,dist)
+    if not model or not Root then return false end
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    return hrp and (Root.Position - hrp.Position).Magnitude <= dist or false
+end
+Attack.DistH = function(model,dist)
+    if not model or not Root then return false end
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    return hrp and (Root.Position - hrp.Position).Magnitude > dist or false
+end
 Attack.Kill = function(model,Succes)
-  if model and Succes then
-  if not model:GetAttribute("Locked") then model:SetAttribute("Locked",model.HumanoidRootPart.CFrame) end
+  if not model or not Succes or not Attack.Alive(model) then return end
+  local hrp = model:FindFirstChild("HumanoidRootPart")
+  if not hrp or not RefreshCharacter() then return end
+  if not model:GetAttribute("Locked") then model:SetAttribute("Locked",hrp.CFrame) end
   PosMon = model:GetAttribute("Locked").Position
-  BringEnemy()
+  BringEnemy(model)
   EquipWeapon(_G.SelectWeapon)
-  local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
-  local ToolTip = Equipped.ToolTip
-  if ToolTip == "Blox Fruit" then _tp(model.HumanoidRootPart.CFrame * CFrame.new(0,10,0) * CFrame.Angles(0,math.rad(90),0)) else _tp(model.HumanoidRootPart.CFrame * CFrame.new(0,30,0) * CFrame.Angles(0,math.rad(180),0))end
-  if RandomCFrame then task.wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25)) task.wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(25, 30, 0)) task.wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30 ,0)) task.wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25)) task.wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30, 0))end
+  local character = plr.Character
+  local Equipped = character and character:FindFirstChildOfClass("Tool")
+  local ToolTip = Equipped and Equipped.ToolTip or ""
+  if ToolTip == "Blox Fruit" then
+      _tp(hrp.CFrame * CFrame.new(0,10,0) * CFrame.Angles(0,math.rad(90),0))
+  else
+      _tp(hrp.CFrame * CFrame.new(0,30,0) * CFrame.Angles(0,math.rad(180),0))
+  end
+  if RandomCFrame then
+      task.wait(.5); _tp(hrp.CFrame * CFrame.new(0, 30, 25))
+      task.wait(.5); _tp(hrp.CFrame * CFrame.new(25, 30, 0))
+      task.wait(.5); _tp(hrp.CFrame * CFrame.new(-25, 30, 0))
+      task.wait(.5); _tp(hrp.CFrame * CFrame.new(0, 30, 25))
+      task.wait(.5); _tp(hrp.CFrame * CFrame.new(-25, 30, 0))
   end
 end
 Attack.Kill2 = function(model,Succes)
@@ -1321,7 +1370,7 @@ end
 
 local redzlib = loadstring(game:HttpGet("https://raw.githubusercontent.com/tlredz/Library/refs/heads/main/redz-V5-remake/main.luau"))()
 local Window = redzlib:MakeWindow({
-    Title = "OK Hub : Blox Fruit",
+    Title = "Rip_loder : Blox Fruit",
     SubTitle = "by @real_kuri and @duybeo",
     SaveFolder = "oknaiget.json"
 })
@@ -1356,10 +1405,10 @@ Tabs.Info:AddSection("Information")
 
 Tabs.Info:AddDiscordInvite({
 	Title = "Rip_loder",
-	Description = "A community for OK Hub Users - official scripts, updates, and suport in one place.",
+	Description = "A community for Rip_loder Users - official scripts, updates, and support in one place.",
 	Banner = "rbxassetid://127632820302449", 
 	Logo = "rbxassetid://127632820302449",
-	Invite = "https://discord.gg/BjmaR2NEA",
+	Invite = "https://discord.gg/hDJ4dWawN",
 	Members = 36, 
 	Online = 67, 
 })
@@ -1647,138 +1696,118 @@ local function IsInSubmergedIsland()
 end
 
 task.spawn(function()
-    while task.wait(Sec) do
-        if _G.Level then
-            pcall(function()
-                local char = plr.Character or plr.CharacterAdded:Wait()
-                local Root = char:WaitForChild("HumanoidRootPart")
-                if not Root then return end
+    while task.wait(0.15) do
+        if not _G.Level then
+            teleporting = false
+            alreadyTeleported = false
+            continue
+        end
 
-                local level = plr.Data.Level.Value
-                local inSub = IsInSubmergedIsland()
-                local questUI = plr.PlayerGui.Main.Quest
-                local QuestTitle = questUI.Visible and questUI.Container.QuestTitle.Title.Text or ""
+        pcall(function()
+            if not RefreshCharacter() then return end
 
-                if level >= 2600 and not inSub and not teleporting and not alreadyTeleported then
-                    teleporting = true
-                    
-                    local npcPos = CFrame.new(-16269.7041, 25.2288494, 1373.65955)
-                    local teleportAttempts = 0
-                    
-                    repeat 
-                        task.wait(Sec)
-                        _tp(npcPos)
-                        teleportAttempts = teleportAttempts + 1
-                    until not _G.Level or (Root.Position - npcPos.Position).Magnitude <= 8 or teleportAttempts > 20
+            local char = plr.Character
+            local levelValue = plr:FindFirstChild("Data") and plr.Data:FindFirstChild("Level")
+            local questUI = plr.PlayerGui:FindFirstChild("Main") and plr.PlayerGui.Main:FindFirstChild("Quest")
+            local level = levelValue and levelValue.Value or 0
+            if not questUI then return end
 
-                    if not _G.Level then 
-                        teleporting = false
-                        return 
+            -- Endgame transition: only run once until the character actually reaches the target area.
+            local inSub = IsInSubmergedIsland()
+            if level >= 2600 and not inSub then
+                alreadyTeleported = false
+                if teleporting then return end
+                teleporting = true
+
+                local npcPos = CFrame.new(-16269.7041, 25.2288494, 1373.65955)
+                _tp(npcPos)
+                task.wait(0.8)
+
+                if _G.Level then
+                    local remote = replicated.Modules.Net:FindFirstChild("RF/SubmarineWorkerSpeak")
+                    if remote then
+                        pcall(function()
+                            remote:InvokeServer("TravelToSubmergedIsland")
+                        end)
                     end
+                end
 
-                    task.wait(1)
-                    
-                    pcall(function()
-                        local args = {"TravelToSubmergedIsland"} 
-                        game:GetService("ReplicatedStorage").Modules.Net:FindFirstChild("RF/SubmarineWorkerSpeak"):InvokeServer(unpack(args))
-                    end)
+                local deadline = tick() + 12
+                while _G.Level and tick() < deadline do
+                    if IsInSubmergedIsland() then break end
+                    task.wait(0.4)
+                end
 
-                    local timeout = tick()
-                    repeat 
-                        task.wait(0.5)
-                        local currentInSub = IsInSubmergedIsland()
-                        local farFromNPC = (Root.Position - npcPos.Position).Magnitude > 50
-                        
-                        if currentInSub or farFromNPC then
-                            break
-                        end
-                    until not _G.Level or tick() - timeout > 15
+                alreadyTeleported = IsInSubmergedIsland()
+                teleporting = false
+                return
+            end
 
-                    task.wait(2)
-                    alreadyTeleported = true
-                    teleporting = false
-                    
-                elseif inSub or level < 2600 then
-                    alreadyTeleported = true
-                    teleporting = false
+            if level < 2600 or inSub then
+                alreadyTeleported = true
+                teleporting = false
+            end
 
-                    local questData = QuestNeta()
-                    
-                    if not questData or not questData[1] then
-                        task.wait(1)
-                        return
+            local questData = QuestNeta()
+            if not questData or not questData[1] or not questData[3] or not questData[2] then return end
+
+            local questTitle = ""
+            if questUI.Visible then
+                local container = questUI:FindFirstChild("Container")
+                local title = container and container:FindFirstChild("QuestTitle")
+                local titleLabel = title and title:FindFirstChild("Title")
+                questTitle = titleLabel and titleLabel.Text or ""
+            end
+
+            if questUI.Visible and not string.find(questTitle, questData[1]) then
+                pcall(function() replicated.Remotes.CommF_:InvokeServer("AbandonQuest") end)
+                task.wait(0.35)
+                return
+            end
+
+            if not questUI.Visible then
+                local questPos = questData[6] or GetQuestPoint()
+                if questPos then
+                    _tp(questPos)
+                    task.wait(0.5)
+                    if RefreshCharacter() and (Root.Position - questPos.Position).Magnitude <= 12 then
+                        pcall(function()
+                            replicated.Remotes.CommF_:InvokeServer("StartQuest", questData[3], questData[2])
+                        end)
                     end
-                    
-                    if questUI.Visible and not string.find(QuestTitle, questData[1]) then
-                        replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
-                        task.wait(0.2)
-                        return
-                    end
+                end
+                return
+            end
 
-                    if not questUI.Visible then
-                        local questPos = questData[6]
-                        if questPos then
-                            _tp(questPos)
-                            task.wait(2)
-                            
-                            if (Root.Position - questPos.Position).Magnitude <= 10 then
-                                pcall(function()
-                                    replicated.Remotes.CommF_:InvokeServer("StartQuest", questData[3], questData[2])
-                                end)
-                                task.wait(1)
-                            end
-                        else
-                            pcall(function()
-                                replicated.Remotes.CommF_:InvokeServer("StartQuest", questData[3], questData[2])
-                            end)
-                            task.wait(1)
-                        end
-                        return
-                    end
-
-                    local enemyName = questData[1]
-                    
-                    local foundMob = false
-                    for _, v in pairs(workspace.Enemies:GetChildren()) do
-                        if v.Name == enemyName and Attack.Alive(v) then
-                            foundMob = true
-                            repeat
-                                task.wait(Sec)
-                                _tp(v.HumanoidRootPart.CFrame * CFrame.new(0,20,0))
-                                Attack.Kill(v, _G.Level)
-                                
-                                if not questUI.Visible then
-                                    break
-                                end
-                            until not _G.Level or not v.Parent or v.Humanoid.Health <= 0
-                            break
-                        end
-                    end
-                    
-                    if not foundMob then
-                        for _, v in pairs(replicated:GetChildren()) do
-                            if v.Name == enemyName and Attack.Alive(v) then
-                                foundMob = true
-                                _tp(v.HumanoidRootPart.CFrame * CFrame.new(0,20,0))
-                                break
-                            end
-                        end
-                    end
-                    
-                    if not foundMob then
-                        for _, spawnPoint in pairs(workspace["_WorldOrigin"].EnemySpawns:GetChildren()) do
-                            if string.find(spawnPoint.Name, enemyName) then
-                                _tp(spawnPoint.CFrame * CFrame.new(0, 20, 0))
-                                break
-                            end
+            local target = nil
+            local targetDistance = math.huge
+            for _, enemy in ipairs(workspace.Enemies:GetChildren()) do
+                if enemy.Name == questData[1] and Attack.Alive(enemy) then
+                    local enemyRoot = enemy:FindFirstChild("HumanoidRootPart")
+                    if enemyRoot and Root then
+                        local distance = (enemyRoot.Position - Root.Position).Magnitude
+                        if distance < targetDistance then
+                            target = enemy
+                            targetDistance = distance
                         end
                     end
                 end
-            end)
-        else
-            teleporting = false
-            alreadyTeleported = false
-        end
+            end
+
+            if target then
+                Attack.Kill(target, true)
+            else
+                local spawns = workspace:FindFirstChild("_WorldOrigin") and workspace._WorldOrigin:FindFirstChild("EnemySpawns")
+                if spawns then
+                    for _, spawnPoint in ipairs(spawns:GetChildren()) do
+                        if string.find(spawnPoint.Name, questData[1], 1, true) then
+                            _tp(spawnPoint.CFrame * CFrame.new(0, 20, 0))
+                            break
+                        end
+                    end
+                end
+            end
+        end)
     end
 end)
 
@@ -1790,20 +1819,32 @@ Callback = function(Value)
   _G.AutoFarmNear = Value
 end})
 task.spawn(function()
-  while task.wait() do
-    pcall(function()
-      if _G.AutoFarmNear then
-        for i,v in pairs(workspace.Enemies:GetChildren()) do
-          if v:FindFirstChild("Humanoid") or v:FindFirstChild("HumanoidRootPart") then
-            if v.Humanoid.Health > 0 then
-              repeat task.wait() Attack.Kill(v,_G.AutoFarmNear) until not _G.AutoFarmNear or not v.Parent or v.Humanoid.Health <= 0
+    while task.wait(0.15) do
+        if not _G.AutoFarmNear then continue end
+        pcall(function()
+            if not RefreshCharacter() then return end
+
+            local nearest, nearestDistance = nil, math.huge
+            for _, enemy in ipairs(workspace.Enemies:GetChildren()) do
+                if Attack.Alive(enemy) then
+                    local enemyRoot = enemy:FindFirstChild("HumanoidRootPart")
+                    if enemyRoot then
+                        local distance = (enemyRoot.Position - Root.Position).Magnitude
+                        if distance < nearestDistance then
+                            nearest = enemy
+                            nearestDistance = distance
+                        end
+                    end
+                end
             end
-          end
-        end
-      end
-    end)
-  end
+
+            if nearest then
+                Attack.Kill(nearest, true)
+            end
+        end)
+    end
 end)
+
 FactoryRaids = Tabs.Main:AddToggle({
 Name = "Auto Factory Raid", 
 Description = "", 
