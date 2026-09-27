@@ -1472,7 +1472,7 @@ spawn(function()
         while true do
             wait(1)            
             local mirageIslandExists = game.Workspace._WorldOrigin.Locations:FindFirstChild('Mirage Island') ~= nil
-            local currentStatus = mirageIslandExists and '✅' or '❌'
+            local currentStatus = mirageIslandExists and 'OK' or 'X'
             if currentStatus ~= previousMirageStatus then
                 MirageCheck:SetDesc('Status: ' .. currentStatus)
                 previousMirageStatus = currentStatus
@@ -1486,7 +1486,7 @@ local KitsuneCheck = Tabs.Info:AddParagraph("Kitsune Island", "Status: ")
 local previousKitsuneStatus = ""
 spawn(function()
     while task.wait(1) do
-        local currentStatus = game:GetService("Workspace").Map:FindFirstChild("KitsuneIsland") and '✅' or '❌'
+        local currentStatus = game:GetService("Workspace").Map:FindFirstChild("KitsuneIsland") and 'OK' or 'X'
         if currentStatus ~= previousKitsuneStatus then
             KitsuneCheck:SetDesc('Status: ' .. currentStatus)
             previousKitsuneStatus = currentStatus
@@ -1499,7 +1499,7 @@ local PrehistoricCheck = Tabs.Info:AddParagraph("Prehistoric Island", "Status: "
 local previousPrehistoricStatus = ""
 task.spawn(function()
     while task.wait(1) do
-        local currentStatus = game.Workspace._WorldOrigin.Locations:FindFirstChild("Prehistoric Island") and '✅' or '❌'
+        local currentStatus = game.Workspace._WorldOrigin.Locations:FindFirstChild("Prehistoric Island") and 'OK' or 'X'
         if currentStatus ~= previousPrehistoricStatus then
             PrehistoricCheck:SetDesc("Status: " .. currentStatus)
             previousPrehistoricStatus = currentStatus
@@ -1512,7 +1512,7 @@ local FrozenCheck = Tabs.Info:AddParagraph("Frozen Dimension", "Status: ")
 local previousFrozenStatus = ""
 spawn(function()
     while wait(1) do
-        local currentStatus = game.Workspace._WorldOrigin.Locations:FindFirstChild('Frozen Dimension') and '✅' or '❌'
+        local currentStatus = game.Workspace._WorldOrigin.Locations:FindFirstChild('Frozen Dimension') and 'OK' or 'X'
         if currentStatus ~= previousFrozenStatus then
             FrozenCheck:SetDesc('Status: ' .. currentStatus)
             previousFrozenStatus = currentStatus
@@ -1525,7 +1525,7 @@ local CakePrinceStatus = Tabs.Info:AddParagraph("Cake Prince", "")
 spawn(function()
     while wait(1) do
         local cakePrince = game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("CakePrinceSpawner")
-        local killStatus = "Cake Prince: ✅"
+        local killStatus = "Cake Prince: OK"
         if string.len(cakePrince) >= 86 then
             local killCount = string.sub(cakePrince, 39, 41)
             killStatus = "Killed: " .. killCount
@@ -1540,7 +1540,7 @@ local previousRipStatus = ""
 spawn(function()
     while wait(1) do
         local currentStatus = (game:GetService("ReplicatedStorage"):FindFirstChild("rip_indra True Form") or 
-                               game:GetService("Workspace").Enemies:FindFirstChild("rip_indra")) and '✅' or '❌'
+                               game:GetService("Workspace").Enemies:FindFirstChild("rip_indra")) and 'OK' or 'X'
         if currentStatus ~= previousRipStatus then
             RipIndraCheck:SetDesc("Status: " .. currentStatus)
             previousRipStatus = currentStatus
@@ -1554,7 +1554,7 @@ local previousDoughStatus = ""
 spawn(function()
     while wait(1) do
         local currentStatus = (game:GetService("ReplicatedStorage"):FindFirstChild("Dough King") or 
-                               game:GetService("Workspace").Enemies:FindFirstChild("Dough King")) and '✅' or '❌'
+                               game:GetService("Workspace").Enemies:FindFirstChild("Dough King")) and 'OK' or 'X'
         if currentStatus ~= previousDoughStatus then
             DoughKingCheck:SetDesc("Status: " .. currentStatus)
             previousDoughStatus = currentStatus
@@ -1570,7 +1570,7 @@ task.spawn(function()
         local moonStatus = "Moon: 0/5"
         
         if moonTextureId == "http://www.roblox.com/asset/?id=9709149431" then
-            moonStatus = "Moon: 5/5 (Full Moon) ✅"
+            moonStatus = "Moon: 5/5 (Full Moon) OK"
         elseif moonTextureId == "http://www.roblox.com/asset/?id=9709149052" then
             moonStatus = "Moon: 4/5"
         elseif moonTextureId == "http://www.roblox.com/asset/?id=9709143733" then
@@ -1592,11 +1592,11 @@ spawn(function()
         local swordStatus = "Not Found"
         
         if game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("LegendarySwordDealer", "1") then
-            swordStatus = "Shisui ✅"
+            swordStatus = "Shisui OK"
         elseif game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("LegendarySwordDealer", "2") then
-            swordStatus = "Wando ✅"
+            swordStatus = "Wando OK"
         elseif game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("LegendarySwordDealer", "3") then
-            swordStatus = "Saddi ✅"
+            swordStatus = "Saddi OK"
         end
         
         LegendarySwordCheck:SetDesc(swordStatus)
@@ -1664,6 +1664,9 @@ Tabs.Main:AddDropdown({
 
 Tabs.Main:AddSection("Farming")
 
+local AUTO_FARM_MAX_LEVEL = 2800
+local AUTO_FARM_SECRET_LEVEL = 3000
+
 FarmLevel = Tabs.Main:AddToggle({
     Name = "Auto Farm Level",
     Description = "",
@@ -1728,7 +1731,9 @@ task.spawn(function()
 
         pcall(function()
             local char, humanoid, root = GetLevelCharacter()
-            if not root then return end
+            if not root then
+                return
+            end
 
             Root = root
             if plr:FindFirstChild("Energy") then
@@ -1738,65 +1743,78 @@ task.spawn(function()
             local data = plr:FindFirstChild("Data")
             local levelValue = data and data:FindFirstChild("Level")
             local level = levelValue and levelValue.Value
-            if not level then return end
-
-            local questUI = GetQuestUI()
-            if not questUI then return end
-
-            local inSub = IsInSubmergedIsland()
-
-            if level >= 2600 and not inSub and not teleporting and not alreadyTeleported then
-                teleporting = true
-
-                local npcPos = CFrame.new(-16269.7041, 25.2288494, 1373.65955)
-                local attempts = 0
-
-                while _G.Level and attempts < 20 do
-                    local _, _, currentRoot = GetLevelCharacter()
-                    if not currentRoot then break end
-                    Root = currentRoot
-
-                    if (currentRoot.Position - npcPos.Position).Magnitude <= 8 then
-                        break
-                    end
-
-                    _tp(npcPos)
-                    attempts += 1
-                    task.wait(Sec)
-                end
-
-                if not _G.Level then
-                    teleporting = false
-                    return
-                end
-
-                task.wait(0.5)
-
-                pcall(function()
-                    local remote = replicated.Modules.Net:FindFirstChild("RF/SubmarineWorkerSpeak")
-                    if remote then
-                        remote:InvokeServer("TravelToSubmergedIsland")
-                    end
-                end)
-
-                local timeout = tick() + 15
-                repeat
-                    task.wait(0.5)
-                    inSub = IsInSubmergedIsland()
-                until not _G.Level or inSub or tick() >= timeout
-
-                alreadyTeleported = inSub
-                teleporting = false
+            if type(level) ~= "number" then
                 return
             end
 
-            if level >= 2600 and not inSub then
+            if level >= AUTO_FARM_MAX_LEVEL then
+                teleporting = false
+                alreadyTeleported = false
                 return
+            end
+
+            local questUI = GetQuestUI()
+            if not questUI then
+                return
+            end
+
+            local inSub = IsInSubmergedIsland()
+
+            if level >= 2600 and not inSub then
+                if not teleporting then
+                    teleporting = true
+
+                    local npcPos = CFrame.new(-16269.7041, 25.2288494, 1373.65955)
+                    local attempts = 0
+
+                    while _G.Level and attempts < 20 do
+                        local _, _, currentRoot = GetLevelCharacter()
+                        if not currentRoot then
+                            break
+                        end
+
+                        Root = currentRoot
+
+                        if (currentRoot.Position - npcPos.Position).Magnitude <= 8 then
+                            break
+                        end
+
+                        _tp(npcPos)
+                        attempts += 1
+                        task.wait(Sec)
+                    end
+
+                    if not _G.Level then
+                        teleporting = false
+                        return
+                    end
+
+                    task.wait(0.5)
+
+                    pcall(function()
+                        local remote = replicated.Modules.Net:FindFirstChild("RF/SubmarineWorkerSpeak")
+                        if remote then
+                            remote:InvokeServer("TravelToSubmergedIsland")
+                        end
+                    end)
+
+                    local timeout = tick() + 15
+                    repeat
+                        task.wait(0.5)
+                        inSub = IsInSubmergedIsland()
+                    until not _G.Level or inSub or tick() >= timeout
+
+                    alreadyTeleported = inSub
+                    teleporting = false
+                end
+
+                if not inSub then
+                    return
+                end
             end
 
             local questData = GetLevelQuest()
             if not questData then
-                task.wait(0.5)
                 return
             end
 
@@ -1809,7 +1827,12 @@ task.spawn(function()
             end
 
             local wantedMob = tostring(questData[1])
-            local titleMatches = questTitle ~= "" and string.find(string.lower(questTitle), string.lower(wantedMob), 1, true) ~= nil
+            local titleMatches = questTitle ~= "" and string.find(
+                string.lower(questTitle),
+                string.lower(wantedMob),
+                1,
+                true
+            ) ~= nil
 
             if questUI.Visible and not titleMatches then
                 pcall(function()
@@ -1829,31 +1852,47 @@ task.spawn(function()
                 task.wait(0.7)
 
                 local _, _, currentRoot = GetLevelCharacter()
-                if not currentRoot then return end
+                if not currentRoot then
+                    return
+                end
+
                 Root = currentRoot
 
                 if (currentRoot.Position - questPos.Position).Magnitude <= 35 then
                     pcall(function()
-                        replicated.Remotes.CommF_:InvokeServer("StartQuest", questData[3], questData[2])
+                        replicated.Remotes.CommF_:InvokeServer(
+                            "StartQuest",
+                            questData[3],
+                            questData[2]
+                        )
                     end)
                     task.wait(0.6)
                 end
+
                 return
             end
 
             local enemy = nil
-            local enemySpawns = workspace:FindFirstChild("_WorldOrigin") and workspace._WorldOrigin:FindFirstChild("EnemySpawns")
+            local enemyFolder = workspace:FindFirstChild("Enemies")
+            local enemySpawns = workspace:FindFirstChild("_WorldOrigin")
+                and workspace._WorldOrigin:FindFirstChild("EnemySpawns")
 
-            for _, mob in ipairs(workspace.Enemies:GetChildren()) do
-                if mob.Name == wantedMob and Attack.Alive(mob) and mob:FindFirstChild("HumanoidRootPart") then
-                    enemy = mob
-                    break
+            if enemyFolder then
+                for _, mob in ipairs(enemyFolder:GetChildren()) do
+                    if mob.Name == wantedMob
+                        and Attack.Alive(mob)
+                        and mob:FindFirstChild("HumanoidRootPart") then
+                        enemy = mob
+                        break
+                    end
                 end
             end
 
             if not enemy then
                 for _, mob in ipairs(replicated:GetChildren()) do
-                    if mob.Name == wantedMob and Attack.Alive(mob) and mob:FindFirstChild("HumanoidRootPart") then
+                    if mob.Name == wantedMob
+                        and Attack.Alive(mob)
+                        and mob:FindFirstChild("HumanoidRootPart") then
                         enemy = mob
                         break
                     end
@@ -1863,23 +1902,40 @@ task.spawn(function()
             if enemy then
                 repeat
                     task.wait(Sec)
-                    if not _G.Level then break end
+
+                    if not _G.Level then
+                        break
+                    end
 
                     local _, _, currentRoot = GetLevelCharacter()
-                    if not currentRoot then break end
+                    if not currentRoot then
+                        break
+                    end
+
                     Root = currentRoot
 
                     local enemyRoot = enemy:FindFirstChild("HumanoidRootPart")
-                    if not enemyRoot then break end
+                    if not enemyRoot then
+                        break
+                    end
 
                     Attack.Kill(enemy, true)
-                until not _G.Level or not enemy.Parent or not Attack.Alive(enemy) or not questUI.Visible
+                until not _G.Level
+                    or not enemy.Parent
+                    or not Attack.Alive(enemy)
+                    or not questUI.Visible
+
                 return
             end
 
             if enemySpawns then
                 for _, spawnPoint in ipairs(enemySpawns:GetChildren()) do
-                    if string.find(string.lower(spawnPoint.Name), string.lower(wantedMob), 1, true) then
+                    if string.find(
+                        string.lower(spawnPoint.Name),
+                        string.lower(wantedMob),
+                        1,
+                        true
+                    ) then
                         _tp(spawnPoint.CFrame * CFrame.new(0, 20, 0))
                         break
                     end
@@ -2667,7 +2723,7 @@ spawn(function()
                                game:GetService("ReplicatedStorage"):FindFirstChild("Urban") or 
                                game:GetService("Workspace").Enemies:FindFirstChild("Diablo") or 
                                game:GetService("Workspace").Enemies:FindFirstChild("Deandre") or 
-                               game:GetService("Workspace").Enemies:FindFirstChild("Urban")) and '✅' or '❌'
+                               game:GetService("Workspace").Enemies:FindFirstChild("Urban")) and 'OK' or 'X'
         local progress = game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("EliteHunter", "Progress")
         if currentStatus ~= previousStatus then
             EliteHunter:SetDesc("Status: " .. currentStatus .. " | Killed: " .. progress)
@@ -3368,9 +3424,9 @@ spawn(function()
     pcall(function()
         while wait(1) do
             if workspace.Enemies:FindFirstChild("Tyrant of the Skies") then
-                TyrantStatus:SetDesc("✅")
+                TyrantStatus:SetDesc("OK")
             else
-                TyrantStatus:SetDesc("❌")
+                TyrantStatus:SetDesc("X")
             end
         end
     end)
