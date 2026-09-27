@@ -75,7 +75,7 @@ end
 local Attack = {}
 Attack.__index = Attack
 Attack.Alive = function(model) if not model then return end local Humanoid = model:FindFirstChild("Humanoid") return Humanoid and Humanoid.Health > 0 end
-Attack.Pos = function(model,dist) return (Root.Position - mode.Position).Magnitude <= dist end
+Attack.Pos = function(model,dist) return model and model:FindFirstChild("HumanoidRootPart") and (Root.Position - model.HumanoidRootPart.Position).Magnitude <= dist end
 Attack.Dist = function(model,dist) return (Root.Position - model:FindFirstChild("HumanoidRootPart").Position).Magnitude <= dist end
 Attack.DistH = function(model,dist) return (Root.Position - model:FindFirstChild("HumanoidRootPart").Position).Magnitude > dist end
 Attack.Kill = function(model,Succes)
@@ -84,8 +84,8 @@ Attack.Kill = function(model,Succes)
   PosMon = model:GetAttribute("Locked").Position
   BringEnemy()
   EquipWeapon(_G.SelectWeapon)
-  local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
-  local ToolTip = Equipped.ToolTip
+  local Equipped = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
+  local ToolTip = Equipped and Equipped.ToolTip or ""
   if ToolTip == "Blox Fruit" then _tp(model.HumanoidRootPart.CFrame * CFrame.new(0,10,0) * CFrame.Angles(0,math.rad(90),0)) else _tp(model.HumanoidRootPart.CFrame * CFrame.new(0,30,0) * CFrame.Angles(0,math.rad(180),0))end
   if RandomCFrame then wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25)) wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(25, 30, 0)) wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30 ,0)) wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25)) wait(.5)_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30, 0))end
   end
@@ -1315,7 +1315,7 @@ end
 
 local redzlib = loadstring(game:HttpGet("https://raw.githubusercontent.com/tlredz/Library/refs/heads/main/redz-V5-remake/main.luau"))()
 local Window = redzlib:MakeWindow({
-    Title = "OK Hub : Blox Fruit",
+    Title = "Rip_loder : Blox Fruit",
     SubTitle = "by @real_kuri and @duybeo",
     SaveFolder = "oknaiget.json"
 })
@@ -1332,17 +1332,17 @@ local MobileButton = Minimizer:CreateMobileMinimizer({
 local Tabs = {
     Info = Window:MakeTab({ Title = "Tab Info And Status", Icon = "Info" }),
     Main = Window:MakeTab({ Title = "Tab Farming", Icon = "rbxassetid://7733960981" }),
-    Settings = Window:MakeTab({ Title = "Tab Setting", Icon = "rbxassetid://7734053495" }),
-    Fish = Window:MakeTab({ Title = "Tab Fishing", Icon = "rbxassetid://127664059821666" }),
     Quests = Window:MakeTab({ Title = "Tab Quest And Item", Icon = "rbxassetid://13075622619" }),
     SeaEvent = Window:MakeTab({ Title = "Tab Sea Event", Icon = "waves" }),
     Race = Window:MakeTab({ Title = "Tab Mirage And Race", Icon = "rbxassetid://11162889532" }),
     Prehistoric = Window:MakeTab({ Title = "Tab Volcano Event", Icon = "tent" }),
-    Esp = Window:MakeTab({ Title = "Tab Stats And Esp", Icon = "rbxassetid://7040410130" }),
+    Fish = Window:MakeTab({ Title = "Tab Fishing", Icon = "rbxassetid://127664059821666" }),
     Raids = Window:MakeTab({ Title = "Tab Fruit And Raid", Icon = "rbxassetid://11155986081" }),
+    Esp = Window:MakeTab({ Title = "Tab Stats And Esp", Icon = "rbxassetid://7040410130" }),
     Combat = Window:MakeTab({ Title = "Tab Local Player", Icon = "rbxassetid://13075651575" }),
     Travel = Window:MakeTab({ Title = "Tab Teleport", Icon = "locate" }),
     Shop = Window:MakeTab({ Title = "Tab Shopping", Icon = "rbxassetid://6031265976" }),
+    Settings = Window:MakeTab({ Title = "Tab Setting", Icon = "rbxassetid://7734053495" }),
     Misc = Window:MakeTab({ Title = "Tab Miscellaneous", Icon = "rbxassetid://10709783577" })
 }
 
@@ -1350,7 +1350,7 @@ Tabs.Info:AddSection("Information")
 
 Tabs.Info:AddDiscordInvite({
 	Title = "Rip_loder",
-	Description = "A community for OK Hub Users - official scripts, updates, and suport in one place.",
+	Description = "A community for Rip_loder Users - official scripts, updates, and suport in one place.",
 	Banner = "rbxassetid://127632820302449", 
 	Logo = "rbxassetid://127632820302449",
 	Invite = "https://discord.gg/BjmaR2NEA",
@@ -1693,7 +1693,8 @@ task.spawn(function()
                     teleporting = false
                     
                 elseif inSub or level < 2600 then
-                    alreadyTeleported = true
+                    -- Só mantém a flag como concluída quando o personagem realmente está na Submerged Island.
+                    alreadyTeleported = inSub
                     teleporting = false
 
                     local questData = QuestNeta()
@@ -1783,19 +1784,53 @@ Default = false,
 Callback = function(Value)
   _G.AutoFarmNear = Value
 end})
-spawn(function()
-  while wait() do
-    pcall(function()
-      if _G.AutoFarmNear then
-        for i,v in pairs(workspace.Enemies:GetChildren()) do
-          if v:FindFirstChild("Humanoid") or v:FindFirstChild("HumanoidRootPart") then
-            if v.Humanoid.Health > 0 then
-              repeat wait() Attack.Kill(v,_G.AutoFarmNear) until not _G.AutoFarmNear or not v.Parent or v.Humanoid.Health <= 0
+
+task.spawn(function()
+  while task.wait(0.15) do
+    if _G.AutoFarmNear then
+      local ok, err = pcall(function()
+        local character = plr.Character
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        local nearestMob = nil
+        local nearestDistance = math.huge
+
+        for _, mob in ipairs(workspace.Enemies:GetChildren()) do
+          local humanoid = mob:FindFirstChildOfClass("Humanoid")
+          local mobRoot = mob:FindFirstChild("HumanoidRootPart")
+
+          if humanoid and mobRoot and humanoid.Health > 0 then
+            local distance = (mobRoot.Position - hrp.Position).Magnitude
+            if distance < nearestDistance then
+              nearestDistance = distance
+              nearestMob = mob
             end
           end
         end
+
+        if nearestMob then
+          repeat
+            task.wait(0.05)
+            if not _G.AutoFarmNear then break end
+
+            local targetRoot = nearestMob:FindFirstChild("HumanoidRootPart")
+            local targetHumanoid = nearestMob:FindFirstChildOfClass("Humanoid")
+            if not targetRoot or not targetHumanoid or targetHumanoid.Health <= 0 then break end
+
+            _tp(targetRoot.CFrame * CFrame.new(0, 20, 0))
+            Attack.Kill(nearestMob, true)
+          until not _G.AutoFarmNear
+             or not nearestMob.Parent
+             or not nearestMob:FindFirstChildOfClass("Humanoid")
+             or nearestMob:FindFirstChildOfClass("Humanoid").Health <= 0
+        end
+      end)
+
+      if not ok then
+        warn("Rip_loder Auto Farm Nearest:", err)
       end
-    end)
+    end
   end
 end)
 FactoryRaids = Tabs.Main:AddToggle({
@@ -11993,8 +12028,8 @@ end
 StartMainLoops()
 
 Window:Notify({
-  Title = "OK Hub",
-  Content = "OK hub da comeback",
+  Title = "Rip_loder",
+  Content = "Rip_loder da comeback",
   Image = "rbxassetid://127632820302449",
   Duration = 5
 })
