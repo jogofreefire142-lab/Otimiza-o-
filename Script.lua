@@ -572,29 +572,308 @@ GetWP = function(nametool)
     end
   return false
 end 
-getInfinity_Ability = function(Method, Var)
-  if not Root then return end
-  if Method == "Soru" and Var then
-    for _,gc in next, getgc() do
-      if plr.Character.Soru then
-        if ((typeof(gc) == "function") and (getfenv(gc).script == plr.Character.Soru)) then
-          for _, v in next, getupvalues(gc) do
-            if (typeof(v) == "table") then
-              repeat wait(Sec) v.LastUse = 0 until not Var or (plr.Character.Humanoid.Health <= 0)
+local InfiniteHealth = false
+local InfiniteEnergy = false
+local InfiniteMink = false
+local InfiniteSoru = false
+local InfiniteObservation = false
+
+local InfiniteConnections = {}
+local InfiniteCharacter = nil
+local OriginalVisionRadius = nil
+local SoruTables = {}
+local CreatedAgilityByCharacter = setmetatable({}, {__mode = "k"})
+
+local function DisconnectInfinite(name)
+  local connection = InfiniteConnections[name]
+  if connection then
+    pcall(function() connection:Disconnect() end)
+    InfiniteConnections[name] = nil
+  end
+end
+
+local function GetCharacterHumanoid(character)
+  if not character then return nil end
+  return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function SetupInfiniteHealth(character)
+  DisconnectInfinite("HealthChanged")
+  if not InfiniteHealth or not character then return end
+
+  local humanoid = GetCharacterHumanoid(character) or character:WaitForChild("Humanoid", 5)
+  if not humanoid then return end
+
+  local function RestoreHealth()
+    if not InfiniteHealth or humanoid.Health <= 0 then return end
+    local maxHealth = tonumber(humanoid.MaxHealth)
+    if maxHealth and maxHealth > 0 and humanoid.Health < maxHealth then
+      pcall(function()
+        humanoid.Health = maxHealth
+      end)
+    end
+  end
+
+  RestoreHealth()
+  InfiniteConnections.HealthChanged = humanoid.HealthChanged:Connect(RestoreHealth)
+end
+
+local function GetEnergyObject(character)
+  if not character then return nil end
+  local energy = character:FindFirstChild("Energy")
+  if energy and (energy:IsA("NumberValue") or energy:IsA("IntValue")) then
+    return energy
+  end
+  return nil
+end
+
+local function GetCurrentEnergyCap(character, energy)
+  if not energy then return nil end
+
+  local candidates = {
+    character:FindFirstChild("MaxEnergy"),
+    character:FindFirstChild("EnergyMax"),
+    character:FindFirstChild("MaximumEnergy"),
+    plr:FindFirstChild("MaxEnergy"),
+  }
+
+  for _, value in ipairs(candidates) do
+    if value and (value:IsA("NumberValue") or value:IsA("IntValue")) then
+      if value.Value > 0 then
+        return value.Value
+      end
+    end
+  end
+
+  if Energy and Energy > 0 then
+    return Energy
+  end
+
+  local data = plr:FindFirstChild("Data")
+  local stats = data and data:FindFirstChild("Stats")
+  local melee = stats and stats:FindFirstChild("Melee")
+  if melee then
+    local level = tonumber(melee.Value)
+    if level and level > 0 then
+      return 5 * (level + 19)
+    end
+  end
+
+  return math.max(tonumber(energy.Value) or 0, 0)
+end
+
+local function SetupInfiniteEnergy(character)
+  DisconnectInfinite("EnergyChanged")
+  if not InfiniteEnergy or not character then return end
+
+  local energy = GetEnergyObject(character)
+  if not energy then return end
+
+  local function RestoreEnergy()
+    if not InfiniteEnergy then return end
+    local cap = GetCurrentEnergyCap(character, energy)
+    if cap and cap > 0 and energy.Value < cap then
+      pcall(function()
+        energy.Value = cap
+      end)
+    end
+  end
+
+  RestoreEnergy()
+  InfiniteConnections.EnergyChanged = energy.Changed:Connect(RestoreEnergy)
+end
+
+local function SetupInfiniteMink(character)
+  if not InfiniteMink or not character then return end
+
+  local root = character:FindFirstChild("HumanoidRootPart")
+  local fx = replicated:FindFirstChild("FX")
+  local agilityTemplate = fx and fx:FindFirstChild("Agility")
+  if not root or not agilityTemplate then return end
+
+  if not root:FindFirstChild("Agility") then
+    local ok, clone = pcall(function()
+      local object = agilityTemplate:Clone()
+      object.Name = "Agility"
+      object.Parent = root
+      return object
+    end)
+    if ok and clone then
+      CreatedAgilityByCharacter[character] = true
+    end
+  end
+end
+
+local function RemoveInfiniteMink(character)
+  if not character then return end
+  if not CreatedAgilityByCharacter[character] then return end
+
+  local root = character:FindFirstChild("HumanoidRootPart")
+  local agility = root and root:FindFirstChild("Agility")
+  if agility then
+    pcall(function() agility:Destroy() end)
+  end
+  CreatedAgilityByCharacter[character] = nil
+end
+
+local function SetupInfiniteObservation()
+  local vision = plr:FindFirstChild("VisionRadius")
+  if not vision or not (vision:IsA("NumberValue") or vision:IsA("IntValue")) then return end
+
+  if OriginalVisionRadius == nil then
+    OriginalVisionRadius = vision.Value
+  end
+
+  pcall(function()
+    vision.Value = math.huge
+  end)
+end
+
+local function RestoreInfiniteObservation()
+  if OriginalVisionRadius == nil then return end
+
+  local vision = plr:FindFirstChild("VisionRadius")
+  if vision and (vision:IsA("NumberValue") or vision:IsA("IntValue")) then
+    pcall(function()
+      vision.Value = OriginalVisionRadius
+    end)
+  end
+
+  OriginalVisionRadius = nil
+end
+
+local function ScanInfiniteSoru(character)
+  SoruTables = {}
+  if not InfiniteSoru or not character then return end
+
+  local soru = character:FindFirstChild("Soru")
+  if not soru then return end
+  if type(getgc) ~= "function" or type(getfenv) ~= "function" or type(getupvalues) ~= "function" then return end
+
+  local okGc, objects = pcall(getgc)
+  if not okGc or type(objects) ~= "table" then return end
+
+  for _, object in next, objects do
+    if typeof(object) == "function" then
+      local okEnv, env = pcall(getfenv, object)
+      if okEnv and env and env.script == soru then
+        local okUp, upvalues = pcall(getupvalues, object)
+        if okUp and type(upvalues) == "table" then
+          for _, value in next, upvalues do
+            if type(value) == "table" and value.LastUse ~= nil then
+              SoruTables[value] = true
             end
           end
         end
       end
-    end    
-  elseif Method == "Energy" and Var then
-    plr.Character.Energy.Changed:connect(function()
-      if Var then plr.Character.Energy.Value = Energy end 
-    end)
-  elseif Method == "Observation" and Var then
-    local VisionRadius = plr.VisionRadius
-    VisionRadius.Value = math.huge
+    end
   end
 end
+
+local function MaintainInfiniteSoru()
+  if not InfiniteSoru then return end
+  for state in pairs(SoruTables) do
+    pcall(function()
+      if state.LastUse ~= nil then
+        state.LastUse = 0
+      end
+    end)
+  end
+end
+
+local function getInfinity_Ability(Method, Var)
+  if Method == "Soru" then
+    InfiniteSoru = Var
+    if Var then
+      ScanInfiniteSoru(plr.Character)
+    else
+      SoruTables = {}
+    end
+  elseif Method == "Energy" then
+    InfiniteEnergy = Var
+    if Var then
+      SetupInfiniteEnergy(plr.Character)
+    else
+      DisconnectInfinite("EnergyChanged")
+    end
+  elseif Method == "Observation" then
+    InfiniteObservation = Var
+    if Var then
+      SetupInfiniteObservation()
+    else
+      RestoreInfiniteObservation()
+    end
+  elseif Method == "Health" then
+    InfiniteHealth = Var
+    if Var then
+      SetupInfiniteHealth(plr.Character)
+    else
+      DisconnectInfinite("HealthChanged")
+    end
+  elseif Method == "Mink" then
+    InfiniteMink = Var
+    if Var then
+      SetupInfiniteMink(plr.Character)
+    else
+      RemoveInfiniteMink(plr.Character)
+    end
+  end
+end
+
+DisconnectInfinite("CharacterAdded")
+InfiniteConnections.CharacterAdded = plr.CharacterAdded:Connect(function(character)
+  InfiniteCharacter = character
+  task.wait(0.5)
+
+  if InfiniteHealth then SetupInfiniteHealth(character) end
+  if InfiniteEnergy then SetupInfiniteEnergy(character) end
+  if InfiniteMink then SetupInfiniteMink(character) end
+  if InfiniteSoru then
+    SoruTables = {}
+    ScanInfiniteSoru(character)
+  end
+end)
+
+DisconnectInfinite("Heartbeat")
+InfiniteConnections.Heartbeat = RunSer.Heartbeat:Connect(function()
+  local character = plr.Character
+  if not character or character ~= InfiniteCharacter and InfiniteCharacter ~= nil then
+    InfiniteCharacter = character
+  end
+
+  if InfiniteHealth then
+    local humanoid = GetCharacterHumanoid(character)
+    if humanoid and humanoid.Health > 0 and humanoid.Health < humanoid.MaxHealth then
+      pcall(function() humanoid.Health = humanoid.MaxHealth end)
+    end
+  end
+
+  if InfiniteEnergy then
+    local energy = GetEnergyObject(character)
+    if energy then
+      local cap = GetCurrentEnergyCap(character, energy)
+      if cap and energy.Value < cap then
+        pcall(function() energy.Value = cap end)
+      end
+    end
+  end
+
+  if InfiniteMink then
+    SetupInfiniteMink(character)
+  end
+
+  if InfiniteSoru then
+    if next(SoruTables) == nil then
+      ScanInfiniteSoru(character)
+    end
+    MaintainInfiniteSoru()
+  end
+
+  if InfiniteObservation then
+    SetupInfiniteObservation()
+  end
+end)
+
 Hop = function()
   pcall(function()
     for count = math.random(1, math.random(40, 75)), 100 do
@@ -11209,480 +11488,48 @@ local function NoCooldown()
     end
 end
 
--- Infinite ability controller
-local InfiniteState = {
-    Health = false,
-    Energy = false,
-    Mink = false,
-    Soru = false,
-    Observation = false,
-}
-
-local InfiniteConnections = {}
-local EnergyCaps = setmetatable({}, {__mode = "k"})
-local CreatedAgility = setmetatable({}, {__mode = "k"})
-local OriginalVisionRadius = nil
-local SoruCache = setmetatable({}, {__mode = "k"})
-
-local function DisconnectInfiniteConnection(name)
-    local connection = InfiniteConnections[name]
-    if connection then
-        pcall(function()
-            connection:Disconnect()
-        end)
-        InfiniteConnections[name] = nil
-    end
-end
-
-local function GetLiveCharacter()
-    local character = plr.Character
-    if not character or not character.Parent then
-        return nil
-    end
-    return character
-end
-
-local function GetLiveHumanoid(character)
-    if not character then
-        return nil
-    end
-    return character:FindFirstChildOfClass("Humanoid")
-end
-
-local function ReadNumericValue(instance, names)
-    if not instance then
-        return nil
-    end
-
-    for _, name in ipairs(names) do
-        local child = instance:FindFirstChild(name)
-        if child and (child:IsA("NumberValue") or child:IsA("IntValue")) then
-            return child.Value
-        end
-
-        local attribute = instance:GetAttribute(name)
-        if typeof(attribute) == "number" then
-            return attribute
-        end
-    end
-
-    return nil
-end
-
-local function ResolveEnergyCap(character, energyValue)
-    if not character or not energyValue then
-        return nil
-    end
-
-    local explicitCap = ReadNumericValue(character, {
-        "MaxEnergy",
-        "EnergyMax",
-        "MaximumEnergy",
-        "MaxEnergyValue",
-    })
-
-    if explicitCap and explicitCap > 0 then
-        return explicitCap
-    end
-
-    local meleeLevel = nil
-    local data = plr:FindFirstChild("Data")
-    if data then
-        local directMelee = data:FindFirstChild("Melee")
-        if directMelee and (directMelee:IsA("NumberValue") or directMelee:IsA("IntValue")) then
-            meleeLevel = directMelee.Value
-        else
-            local stats = data:FindFirstChild("Stats")
-            local melee = stats and stats:FindFirstChild("Melee")
-            if melee then
-                if melee:IsA("NumberValue") or melee:IsA("IntValue") then
-                    meleeLevel = melee.Value
-                else
-                    meleeLevel = ReadNumericValue(melee, {"Level", "Value"})
-                end
-            end
-        end
-    end
-
-    -- Fallback based on the current energy system used by this project.
-    local formulaCap = nil
-    if type(meleeLevel) == "number" and meleeLevel >= 1 then
-        formulaCap = 5 * (meleeLevel + 19)
-    end
-
-    local savedCap = EnergyCaps[character]
-    local currentValue = tonumber(energyValue.Value) or 0
-
-    if savedCap and savedCap > 0 then
-        if formulaCap and formulaCap > savedCap then
-            savedCap = formulaCap
-            EnergyCaps[character] = savedCap
-        end
-        return math.max(savedCap, currentValue)
-    end
-
-    local cap = math.max(currentValue, formulaCap or 0)
-    if cap > 0 then
-        EnergyCaps[character] = cap
-        return cap
-    end
-
-    return nil
-end
-
-local function MaintainHealth(character)
-    if not InfiniteState.Health or not character then
-        return
-    end
-
-    local humanoid = GetLiveHumanoid(character)
-    if not humanoid or humanoid.Health <= 0 then
-        return
-    end
-
-    local maxHealth = tonumber(humanoid.MaxHealth)
-    if maxHealth and maxHealth > 0 and humanoid.Health < maxHealth then
-        pcall(function()
-            humanoid.Health = maxHealth
-        end)
-    end
-end
-
-local function SetupHealthProtection(character)
-    DisconnectInfiniteConnection("HealthChanged")
-
-    if not InfiniteState.Health or not character then
-        return
-    end
-
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then
-        humanoid = character:WaitForChild("Humanoid", 8)
-    end
-    if not humanoid then
-        return
-    end
-
-    MaintainHealth(character)
-
-    InfiniteConnections.HealthChanged = humanoid.HealthChanged:Connect(function()
-        if InfiniteState.Health then
-            MaintainHealth(character)
-        end
-    end)
-end
-
-local function SetupEnergyProtection(character)
-    DisconnectInfiniteConnection("EnergyChanged")
-
-    if not InfiniteState.Energy or not character then
-        return
-    end
-
-    local energyValue = character:FindFirstChild("Energy")
-    if not energyValue or not (energyValue:IsA("NumberValue") or energyValue:IsA("IntValue")) then
-        return
-    end
-
-    local cap = ResolveEnergyCap(character, energyValue)
-    if cap then
-        pcall(function()
-            energyValue.Value = cap
-        end)
-    end
-
-    InfiniteConnections.EnergyChanged = energyValue.Changed:Connect(function()
-        if not InfiniteState.Energy then
-            return
-        end
-
-        local currentCap = ResolveEnergyCap(character, energyValue)
-        if currentCap then
-            pcall(function()
-                if energyValue.Value < currentCap then
-                    energyValue.Value = currentCap
-                end
-            end)
-        end
-    end)
-end
-
-local function SetupMink(character)
-    if not InfiniteState.Mink or not character then
-        return
-    end
-
-    local race = plr:FindFirstChild("Data") and plr.Data:FindFirstChild("Race")
-    if race and tostring(race.Value) ~= "Mink" then
-        return
-    end
-
-    local root = character:FindFirstChild("HumanoidRootPart")
-    local agilityTemplate = replicated:FindFirstChild("FX") and replicated.FX:FindFirstChild("Agility")
-    if not root or not agilityTemplate then
-        return
-    end
-
-    if not root:FindFirstChild("Agility") then
-        local ok, agility = pcall(function()
-            local clone = agilityTemplate:Clone()
-            clone.Name = "Agility"
-            clone.Parent = root
-            return clone
-        end)
-        if ok and agility then
-            CreatedAgility[character] = true
-        end
-    end
-end
-
-local function RemoveCreatedMink(character)
-    if not character or not CreatedAgility[character] then
-        return
-    end
-
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if root then
-        local agility = root:FindFirstChild("Agility")
-        if agility then
-            pcall(function()
-                agility:Destroy()
-            end)
-        end
-    end
-
-    CreatedAgility[character] = nil
-end
-
-local function SetupObservationRange()
-    if not InfiniteState.Observation then
-        return
-    end
-
-    local vision = plr:FindFirstChild("VisionRadius")
-    if not vision or not (vision:IsA("NumberValue") or vision:IsA("IntValue")) then
-        return
-    end
-
-    if OriginalVisionRadius == nil then
-        OriginalVisionRadius = vision.Value
-    end
-
-    pcall(function()
-        vision.Value = 1000000000
-    end)
-end
-
-local function RestoreObservationRange()
-    if OriginalVisionRadius == nil then
-        return
-    end
-
-    local vision = plr:FindFirstChild("VisionRadius")
-    if vision and (vision:IsA("NumberValue") or vision:IsA("IntValue")) then
-        pcall(function()
-            vision.Value = OriginalVisionRadius
-        end)
-    end
-
-    OriginalVisionRadius = nil
-end
-
-local function ScanSoru(character)
-    if not InfiniteState.Soru or not character then
-        return
-    end
-
-    local soruScript = character:FindFirstChild("Soru")
-    if not soruScript then
-        return
-    end
-
-    if type(getgc) ~= "function" or type(getfenv) ~= "function" or type(getupvalues) ~= "function" then
-        return
-    end
-
-    local cached = SoruCache[character]
-    if cached and cached.script == soruScript then
-        return
-    end
-
-    local tables = {}
-
-    local okGc, objects = pcall(getgc)
-    if not okGc or type(objects) ~= "table" then
-        return
-    end
-
-    for _, object in next, objects do
-        if typeof(object) == "function" then
-            local okEnv, env = pcall(getfenv, object)
-            if okEnv and env and env.script == soruScript then
-                local okUpvalues, upvalues = pcall(getupvalues, object)
-                if okUpvalues and type(upvalues) == "table" then
-                    for _, value in next, upvalues do
-                        if type(value) == "table" and value.LastUse ~= nil then
-                            tables[value] = true
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    SoruCache[character] = {
-        script = soruScript,
-        tables = tables,
-    }
-end
-
-local function MaintainSoru(character)
-    if not InfiniteState.Soru or not character then
-        return
-    end
-
-    ScanSoru(character)
-
-    local cached = SoruCache[character]
-    if not cached then
-        return
-    end
-
-    for stateTable in pairs(cached.tables) do
-        pcall(function()
-            if InfiniteState.Soru and stateTable.LastUse ~= nil then
-                stateTable.LastUse = 0
-            end
-        end)
-    end
-end
-
-DisconnectInfiniteConnection("CharacterAdded")
-InfiniteConnections.CharacterAdded = plr.CharacterAdded:Connect(function(character)
-    EnergyCaps[character] = nil
-    task.wait(0.75)
-    if InfiniteState.Health then
-        SetupHealthProtection(character)
-    end
-    if InfiniteState.Energy then
-        SetupEnergyProtection(character)
-    end
-    if InfiniteState.Mink then
-        SetupMink(character)
-    end
-    if InfiniteState.Soru then
-        SoruCache[character] = nil
-    end
-end)
-
-DisconnectInfiniteConnection("InfiniteHeartbeat")
-InfiniteConnections.InfiniteHeartbeat = RunSer.Heartbeat:Connect(function()
-    local character = GetLiveCharacter()
-    if not character then
-        return
-    end
-
-    if InfiniteState.Health then
-        MaintainHealth(character)
-    end
-
-    if InfiniteState.Energy then
-        local energyValue = character:FindFirstChild("Energy")
-        if energyValue and (energyValue:IsA("NumberValue") or energyValue:IsA("IntValue")) then
-            local cap = ResolveEnergyCap(character, energyValue)
-            if cap and energyValue.Value < cap then
-                pcall(function()
-                    energyValue.Value = cap
-                end)
-            end
-        end
-    end
-
-    if InfiniteState.Mink then
-        SetupMink(character)
-    end
-
-    if InfiniteState.Soru then
-        MaintainSoru(character)
-    end
-
-    if InfiniteState.Observation then
-        SetupObservationRange()
-    end
-end)
-
 Tabs.Combat:AddToggle({
     Name = "Infinite Health [ INF ]",
-    Description = "Keeps the living Humanoid at MaxHealth.",
+    Description = "Mantem a vida no MaxHealth enquanto o personagem estiver vivo.",
     Default = false,
     Callback = function(Value)
-        InfiniteState.Health = Value
-        if Value then
-            SetupHealthProtection(GetLiveCharacter())
-        else
-            DisconnectInfiniteConnection("HealthChanged")
-        end
+        getInfinity_Ability("Health", Value)
     end
 })
 
 Tabs.Combat:AddToggle({
     Name = "Instance Mink V3 [ INF ]",
-    Description = "Maintains the Agility instance while enabled.",
+    Description = "Mantem a instancia Agility enquanto estiver ativado.",
     Default = false,
     Callback = function(Value)
-        InfiniteState.Mink = Value
-        local character = GetLiveCharacter()
-        if Value then
-            SetupMink(character)
-        else
-            RemoveCreatedMink(character)
-        end
+        getInfinity_Ability("Mink", Value)
     end
 })
 
 Tabs.Combat:AddToggle({
     Name = "Instance Energy [ INF ]",
-    Description = "Restores Energy to the detected capacity.",
+    Description = "Reenche a energia para a capacidade detectada.",
     Default = false,
     Callback = function(Value)
-        InfiniteState.Energy = Value
-        local character = GetLiveCharacter()
-        if Value then
-            SetupEnergyProtection(character)
-        else
-            DisconnectInfiniteConnection("EnergyChanged")
-        end
+        getInfinity_Ability("Energy", Value)
     end
 })
 
 Tabs.Combat:AddToggle({
     Name = "Instance Soru [ INF ]",
-    Description = "Maintains the detected Soru cooldown state.",
+    Description = "Mantem o cooldown do Soru em zero.",
     Default = false,
     Callback = function(Value)
-        InfiniteState.Soru = Value
-        local character = GetLiveCharacter()
-        if not Value then
-            if character then
-                SoruCache[character] = nil
-            end
-        else
-            ScanSoru(character)
-        end
+        getInfinity_Ability("Soru", Value)
     end
 })
 
 Tabs.Combat:AddToggle({
     Name = "Instance Observation Range [ INF ]",
-    Description = "Expands the local Observation radius while enabled.",
+    Description = "Mantem o alcance de Observation no maximo enquanto ligado.",
     Default = false,
     Callback = function(Value)
-        InfiniteState.Observation = Value
-        if Value then
-            SetupObservationRange()
-        else
-            RestoreObservationRange()
-        end
+        getInfinity_Ability("Observation", Value)
     end
 })
 
