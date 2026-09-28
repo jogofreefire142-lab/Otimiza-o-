@@ -1,23 +1,19 @@
 do
   ply = game.Players
   plr = ply.LocalPlayer
-  local character = plr.Character
-  Root = character and character:FindFirstChild("HumanoidRootPart")
+  Root = plr.Character.HumanoidRootPart
   replicated = game:GetService("ReplicatedStorage")
-  local dataFolder = plr:FindFirstChild("Data")
-  local levelValue = dataFolder and dataFolder:FindFirstChild("Level")
-  Lv = levelValue and levelValue.Value or 0
+  Lv = game.Players.LocalPlayer.Data.Level.Value
   TeleportService = game:GetService("TeleportService")
   TW = game:GetService("TweenService")
   Lighting = game:GetService("Lighting")
-  Enemies = workspace:FindFirstChild("Enemies")
+  Enemies = workspace.Enemies
   vim1 = game:GetService("VirtualInputManager")
   vim2 = game:GetService("VirtualUser")
   TeamSelf = plr.Team
   RunSer = game:GetService("RunService")
   Stats = game:GetService("Stats")
-  local energyValue = character and character:FindFirstChild("Energy")
-  Energy = energyValue and tonumber(energyValue.Value) or 0
+  Energy = plr.Character.Energy.Value
   BringConnections = {}
   BossList = {}
   MaterialList = {}
@@ -35,10 +31,6 @@ do
 end
 
 repeat local start = plr.PlayerGui:WaitForChild("Main"):WaitForChild("Loading") and game:IsLoaded() wait() until start
-Enemies = Enemies or workspace:WaitForChild("Enemies", 15)
-if plr.Character then
-  Root = plr.Character:FindFirstChild("HumanoidRootPart") or Root
-end
 World1 = game.PlaceId == 2753915549 or game.PlaceId == 85211729168715
 World2 = game.PlaceId == 4442272183 or game.PlaceId == 79091703265657
 World3 = game.PlaceId == 7449423635 or game.PlaceId == 100117331123089
@@ -580,339 +572,29 @@ GetWP = function(nametool)
     end
   return false
 end 
-local InfinityState = {
-    Energy = false,
-    EnergyConnection = nil,
-    EnergyCharacter = nil,
-    EnergyCap = nil,
-    Health = false,
-    HealthConnection = nil,
-    HealthCharacter = nil,
-    HealthCap = nil,
-    Mink = false,
-    MinkClone = nil,
-    MinkCharacter = nil,
-    Observation = false,
-    ObservationObject = nil,
-    ObservationOriginal = nil,
-}
-
-local function GetCurrentCharacter()
-    return plr and plr.Character or nil
-end
-
-local function GetCharacterNumberValue(character, names)
-    if not character then return nil end
-    for _, name in ipairs(names) do
-        local value = character:FindFirstChild(name, true)
-        if value and (value:IsA("NumberValue") or value:IsA("IntValue")) then
-            return value
-        end
-    end
-    return nil
-end
-
-local function ResolveEnergyCap(character, energyValue)
-    local candidates = {
-        character and character:GetAttribute("MaxEnergy"),
-        character and character:GetAttribute("EnergyMax"),
-        GetCharacterNumberValue(character, {"MaxEnergy", "EnergyMax"}),
-        plr and plr:GetAttribute("MaxEnergy"),
-        plr and plr:GetAttribute("EnergyMax"),
-    }
-
-    for _, candidate in ipairs(candidates) do
-        local number = candidate
-        if typeof(candidate) == "Instance" then
-            number = candidate.Value
-        end
-        number = tonumber(number)
-        if number and number > 0 then
-            return number
-        end
-    end
-
-    return energyValue and tonumber(energyValue.Value) or tonumber(Energy) or 0
-end
-
-local function DisconnectInfinityConnections()
-    if InfinityState.EnergyConnection then
-        pcall(function() InfinityState.EnergyConnection:Disconnect() end)
-        InfinityState.EnergyConnection = nil
-    end
-    if InfinityState.HealthConnection then
-        pcall(function() InfinityState.HealthConnection:Disconnect() end)
-        InfinityState.HealthConnection = nil
-    end
-end
-
-local function BindInfiniteEnergy(character)
-    if not character then return false end
-
-    local energyValue = GetCharacterNumberValue(character, {"Energy"})
-    if not energyValue then return false end
-
-    if InfinityState.EnergyCharacter == character and InfinityState.EnergyConnection then
-        if InfinityState.EnergyCap and energyValue.Value < InfinityState.EnergyCap then
-            energyValue.Value = InfinityState.EnergyCap
-        end
-        return true
-    end
-
-    if InfinityState.EnergyConnection then
-        pcall(function() InfinityState.EnergyConnection:Disconnect() end)
-        InfinityState.EnergyConnection = nil
-    end
-
-    InfinityState.EnergyCharacter = character
-    InfinityState.EnergyCap = ResolveEnergyCap(character, energyValue)
-    Energy = InfinityState.EnergyCap
-
-    InfinityState.EnergyConnection = energyValue.Changed:Connect(function()
-        if not InfinityState.Energy then return end
-        if energyValue.Parent ~= character then return end
-        local cap = InfinityState.EnergyCap or ResolveEnergyCap(character, energyValue)
-        if cap and cap > 0 and energyValue.Value < cap then
-            energyValue.Value = cap
-        end
-    end)
-
-    if InfinityState.EnergyCap and InfinityState.EnergyCap > 0 then
-        energyValue.Value = InfinityState.EnergyCap
-    end
-
-    return true
-end
-
-local function SetInfiniteEnergy(enabled)
-    InfinityState.Energy = enabled and true or false
-    infEnergy = InfinityState.Energy
-
-    if not InfinityState.Energy then
-        if InfinityState.EnergyConnection then
-            pcall(function() InfinityState.EnergyConnection:Disconnect() end)
-            InfinityState.EnergyConnection = nil
-        end
-        InfinityState.EnergyCharacter = nil
-        InfinityState.EnergyCap = nil
-        return
-    end
-
-    BindInfiniteEnergy(GetCurrentCharacter())
-end
-
-local function BindInfiniteHealth(character)
-    if not character then return false end
-
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return false end
-
-    if InfinityState.HealthCharacter == character and InfinityState.HealthConnection then
-        if humanoid.Health > 0 and humanoid.Health < humanoid.MaxHealth then
-            humanoid.Health = humanoid.MaxHealth
-        end
-        return true
-    end
-
-    if InfinityState.HealthConnection then
-        pcall(function() InfinityState.HealthConnection:Disconnect() end)
-        InfinityState.HealthConnection = nil
-    end
-
-    InfinityState.HealthCharacter = character
-    InfinityState.HealthCap = humanoid.MaxHealth
-
-    InfinityState.HealthConnection = humanoid.HealthChanged:Connect(function(health)
-        if not InfinityState.Health then return end
-        if humanoid.Parent ~= character or humanoid.Health <= 0 then return end
-        if health < humanoid.MaxHealth then
-            humanoid.Health = humanoid.MaxHealth
-        end
-    end)
-
-    if humanoid.Health > 0 then
-        humanoid.Health = humanoid.MaxHealth
-    end
-
-    return true
-end
-
-local function SetInfiniteHealth(enabled)
-    InfinityState.Health = enabled and true or false
-
-    if not InfinityState.Health then
-        if InfinityState.HealthConnection then
-            pcall(function() InfinityState.HealthConnection:Disconnect() end)
-            InfinityState.HealthConnection = nil
-        end
-        InfinityState.HealthCharacter = nil
-        InfinityState.HealthCap = nil
-        return
-    end
-
-    BindInfiniteHealth(GetCurrentCharacter())
-end
-
-local function RemoveInfiniteMinkClone()
-    if InfinityState.MinkClone and InfinityState.MinkClone.Parent then
-        pcall(function() InfinityState.MinkClone:Destroy() end)
-    end
-    InfinityState.MinkClone = nil
-    InfinityState.MinkCharacter = nil
-end
-
-local function BindInfiniteMink(character)
-    if not character then return false end
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    local fxFolder = replicated:FindFirstChild("FX")
-    local agilityTemplate = fxFolder and fxFolder:FindFirstChild("Agility")
-    if not rootPart or not agilityTemplate then return false end
-
-    if InfinityState.MinkCharacter == character and InfinityState.MinkClone and InfinityState.MinkClone.Parent == rootPart then
-        return true
-    end
-
-    if InfinityState.MinkClone and InfinityState.MinkClone.Parent ~= rootPart then
-        RemoveInfiniteMinkClone()
-    end
-
-    local existing = rootPart:FindFirstChild("Agility")
-    if existing then
-        InfinityState.MinkCharacter = character
-        InfinityState.MinkClone = nil
-        return true
-    end
-
-    local clone = agilityTemplate:Clone()
-    clone.Name = "Agility"
-    clone.Parent = rootPart
-    InfinityState.MinkCharacter = character
-    InfinityState.MinkClone = clone
-    return true
-end
-
-local function SetInfiniteMink(enabled)
-    InfinityState.Mink = enabled and true or false
-    InfAblities = InfinityState.Mink
-    if not InfinityState.Mink then
-        RemoveInfiniteMinkClone()
-        return
-    end
-    BindInfiniteMink(GetCurrentCharacter())
-end
-
-local function SetInfiniteObservation(enabled)
-    InfinityState.Observation = enabled and true or false
-    _G.InfiniteObRange = InfinityState.Observation
-    local visionRadius = plr and plr:FindFirstChild("VisionRadius", true)
-
-    if InfinityState.Observation then
-        if visionRadius and (visionRadius:IsA("NumberValue") or visionRadius:IsA("IntValue")) then
-            if InfinityState.ObservationObject ~= visionRadius then
-                InfinityState.ObservationObject = visionRadius
-                InfinityState.ObservationOriginal = visionRadius.Value
-            end
-            visionRadius.Value = math.huge
-        end
-    elseif InfinityState.ObservationObject and InfinityState.ObservationObject.Parent then
-        if InfinityState.ObservationOriginal ~= nil then
-            pcall(function() InfinityState.ObservationObject.Value = InfinityState.ObservationOriginal end)
-        end
-        InfinityState.ObservationObject = nil
-        InfinityState.ObservationOriginal = nil
-    end
-end
-
 getInfinity_Ability = function(Method, Var)
-    if Method == "Energy" then
-        SetInfiniteEnergy(Var)
-    elseif Method == "Health" then
-        SetInfiniteHealth(Var)
-    elseif Method == "Mink" then
-        SetInfiniteMink(Var)
-    elseif Method == "Observation" then
-        SetInfiniteObservation(Var)
-    elseif Method == "Soru" then
-        _G.InfSoru = Var and true or false
-    end
-end
-
-plr.CharacterAdded:Connect(function(character)
-    Root = character:WaitForChild("HumanoidRootPart", 10) or character:FindFirstChild("HumanoidRootPart")
-    local energyValue = character:FindFirstChild("Energy", true)
-    Energy = energyValue and tonumber(energyValue.Value) or 0
-
-    if InfinityState.Mink then
-        task.defer(function() BindInfiniteMink(character) end)
-    end
-    if InfinityState.Energy then
-        task.defer(function() BindInfiniteEnergy(character) end)
-    end
-    if InfinityState.Health then
-        task.defer(function() BindInfiniteHealth(character) end)
-    end
-end)
-
-task.spawn(function()
-    while task.wait(0.1) do
-        pcall(function()
-            local character = GetCurrentCharacter()
-            if not character then return end
-
-            if InfinityState.Energy then
-                BindInfiniteEnergy(character)
-                local energyValue = GetCharacterNumberValue(character, {"Energy"})
-                if energyValue and InfinityState.EnergyCap and energyValue.Value < InfinityState.EnergyCap then
-                    energyValue.Value = InfinityState.EnergyCap
-                end
+  if not Root then return end
+  if Method == "Soru" and Var then
+    for _,gc in next, getgc() do
+      if plr.Character.Soru then
+        if ((typeof(gc) == "function") and (getfenv(gc).script == plr.Character.Soru)) then
+          for _, v in next, getupvalues(gc) do
+            if (typeof(v) == "table") then
+              repeat wait(Sec) v.LastUse = 0 until not Var or (plr.Character.Humanoid.Health <= 0)
             end
-
-            if InfinityState.Health then
-                local humanoid = character:FindFirstChildOfClass("Humanoid")
-                if humanoid and humanoid.Health > 0 then
-                    BindInfiniteHealth(character)
-                    if humanoid.Health < humanoid.MaxHealth then
-                        humanoid.Health = humanoid.MaxHealth
-                    end
-                end
-            end
-
-            if InfinityState.Mink then
-                BindInfiniteMink(character)
-            end
-
-            if InfinityState.Observation then
-                SetInfiniteObservation(true)
-            end
-        end)
-    end
-end)
-
-task.spawn(function()
-    while task.wait(0.35) do
-        if _G.InfSoru then
-            pcall(function()
-                local character = GetCurrentCharacter()
-                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-                local soru = character and character:FindFirstChild("Soru")
-                if not soru or (humanoid and humanoid.Health <= 0) then return end
-
-                for _, gc in next, getgc() do
-                    if typeof(gc) == "function" then
-                        local env = getfenv(gc)
-                        if env and env.script == soru then
-                            for _, value in next, getupvalues(gc) do
-                                if typeof(value) == "table" and rawget(value, "LastUse") ~= nil then
-                                    value.LastUse = 0
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
+          end
         end
-    end
-end)
+      end
+    end    
+  elseif Method == "Energy" and Var then
+    plr.Character.Energy.Changed:connect(function()
+      if Var then plr.Character.Energy.Value = Energy end 
+    end)
+  elseif Method == "Observation" and Var then
+    local VisionRadius = plr.VisionRadius
+    VisionRadius.Value = math.huge
+  end
+end
 Hop = function()
   pcall(function()
     for count = math.random(1, math.random(40, 75)), 100 do
@@ -1659,7 +1341,6 @@ end
 
 local QuestNpcCache = {}
 local QuestNpcCacheTime = {}
-local QuestNpcModelCache = {}
 
 local function NormalizeQuestText(value)
     value = tostring(value or "")
@@ -1673,10 +1354,6 @@ local function QuestNameVariants(questName)
     local noNumber = normalized:gsub("quest%d+$", "quest")
     local base = normalized:gsub("quest%d+$", "")
     return normalized, noNumber, base
-end
-
-local function GetQuestCacheKey(questName, questId)
-    return tostring(questName or "") .. ":" .. tostring(questId or "")
 end
 
 local function GetQuestModuleNpcName(questName, questId)
@@ -1704,280 +1381,104 @@ local function GetQuestModuleNpcName(questName, questId)
     return nil
 end
 
-local function IsCombatModel(model)
-    local current = model
-    while current and current ~= workspace do
-        if current.Name == "Enemies" or current.Name == "Characters" then
-            return true
-        end
-        current = current.Parent
-    end
-    return false
-end
-
-local function AttributeMatchesQuest(value, questName, questId)
-    local normalized, noNumber, base = QuestNameVariants(questName)
-    if value == nil then
+local function NPCMatchesQuest(npc, questName, questId)
+    if not npc or not npc:IsA("Model") or not npc:FindFirstChild("HumanoidRootPart") then
         return false
-    end
-
-    if type(value) == "number" and questId ~= nil then
-        return value == tonumber(questId)
-    end
-
-    local normalizedValue = NormalizeQuestText(value)
-    if normalizedValue == "" then
-        return false
-    end
-
-    if normalizedValue == normalized or normalizedValue == noNumber then
-        return true
-    end
-
-    if base ~= "" and #base >= 4 and normalizedValue == base then
-        return true
-    end
-
-    if questId ~= nil and tonumber(normalizedValue) == tonumber(questId) then
-        return true
-    end
-
-    return false
-end
-
-local function StringMatchesQuest(value, questName, questId)
-    if value == nil then
-        return false
-    end
-
-    local normalized, noNumber, base = QuestNameVariants(questName)
-    local normalizedValue = NormalizeQuestText(value)
-    if normalizedValue == "" then
-        return false
-    end
-
-    if normalizedValue == normalized
-        or normalizedValue == noNumber
-        or (base ~= "" and #base >= 4 and normalizedValue == base) then
-        return true
-    end
-
-    if questId ~= nil and tonumber(normalizedValue) == tonumber(questId) then
-        return true
-    end
-
-    if string.find(normalizedValue, normalized, 1, true)
-        or (noNumber ~= "" and string.find(normalizedValue, noNumber, 1, true)) then
-        return true
-    end
-
-    if base ~= "" and #base >= 4 and string.find(normalizedValue, base, 1, true) then
-        return true
-    end
-
-    return false
-end
-
-local function ScoreQuestNPC(npc, questName, questId, moduleNpcName)
-    if not npc or not npc:IsA("Model") then
-        return -math.huge
-    end
-
-    local root = npc:FindFirstChild("HumanoidRootPart")
-    if not root or not root:IsA("BasePart") or IsCombatModel(npc) then
-        return -math.huge
     end
 
     local normalized, noNumber, base = QuestNameVariants(questName)
     if normalized == "" then
-        return -math.huge
+        return false
     end
 
-    local score = 0
-    local matched = false
     local npcName = NormalizeQuestText(npc.Name)
-
-    if npcName == normalized then
-        score += 120
-        matched = true
-    elseif npcName == noNumber then
-        score += 105
-        matched = true
-    elseif base ~= "" and #base >= 4 and npcName == base then
-        score += 95
-        matched = true
-    elseif string.find(npcName, normalized, 1, true)
+    if npcName == normalized
+        or npcName == noNumber
+        or npcName == base
+        or string.find(npcName, normalized, 1, true)
         or (noNumber ~= "" and string.find(npcName, noNumber, 1, true))
-        or (base ~= "" and #base >= 4 and string.find(npcName, base, 1, true)) then
-        score += 70
-        matched = true
+        or (base ~= "" and string.find(npcName, base, 1, true)) then
+        return true
     end
 
-    local humanoid = npc:FindFirstChildOfClass("Humanoid")
-    if humanoid and StringMatchesQuest(humanoid.DisplayName, questName, questId) then
-        score += 90
-        matched = true
-    end
-
-    if moduleNpcName then
-        local moduleNpcNormalized = NormalizeQuestText(moduleNpcName)
-        if npcName == moduleNpcNormalized then
-            score += 260
-            matched = true
-        elseif humanoid and NormalizeQuestText(humanoid.DisplayName) == moduleNpcNormalized then
-            score += 220
-            matched = true
-        end
+    local questNpcName = GetQuestModuleNpcName(questName, questId)
+    if questNpcName and NormalizeQuestText(questNpcName) == npcName then
+        return true
     end
 
     local attributeNames = {
-        "QuestName", "Quest", "Mission", "MissionName",
-        "QuestId", "QuestID", "MissionId", "MissionID",
-        "QuestNumber", "MissionNumber"
+        "QuestName",
+        "Quest",
+        "Mission",
+        "MissionName",
+        "QuestId",
+        "QuestID",
+        "MissionId",
+        "MissionID"
     }
 
     for _, attributeName in ipairs(attributeNames) do
         local value = npc:GetAttribute(attributeName)
-        if AttributeMatchesQuest(value, questName, questId) then
-            score += 180
-            matched = true
-        end
-    end
-
-    for _, child in ipairs(npc:GetDescendants()) do
-        if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
-            if AttributeMatchesQuest(child.Value, questName, questId) then
-                score += 150
-                matched = true
-            end
-        elseif child:IsA("ProximityPrompt") then
-            if StringMatchesQuest(child.ObjectText, questName, questId) then
-                score += 115
-                matched = true
-            end
-            if StringMatchesQuest(child.ActionText, questName, questId) then
-                score += 110
-                matched = true
-            end
-        elseif child:IsA("TextLabel") or child:IsA("TextButton") then
-            if StringMatchesQuest(child.Text, questName, questId) then
-                score += 75
-                matched = true
+        if value ~= nil then
+            local normalizedValue = NormalizeQuestText(value)
+            if normalizedValue == normalized
+                or normalizedValue == noNumber
+                or (base ~= "" and normalizedValue == base) then
+                return true
             end
         end
     end
 
-    if not matched then
-        return -math.huge
-    end
-
-    local parent = npc.Parent
-    if parent and (parent.Name == "NPCs" or parent.Name == "QuestNPCs" or parent.Name == "QuestGivers") then
-        score += 40
-    end
-
-    local CollectionService = game:GetService("CollectionService")
-    for _, tag in ipairs(CollectionService:GetTags(npc)) do
-        local tagText = tostring(tag):lower()
-        if string.find(tagText, "npc", 1, true)
-            or string.find(tagText, "quest", 1, true)
-            or string.find(tagText, "giver", 1, true) then
-            score += 30
-            break
+    local descendants = npc:GetDescendants()
+    for _, child in ipairs(descendants) do
+        if child:IsA("StringValue") then
+            local normalizedValue = NormalizeQuestText(child.Value)
+            if normalizedValue == normalized
+                or normalizedValue == noNumber
+                or (base ~= "" and normalizedValue == base) then
+                return true
+            end
         end
     end
 
-    return score
+    return false
 end
 
 local function FindBestQuestNPC(questName, questId)
     local character = plr.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local origin = root and root.Position or Vector3.zero
-    local normalizedQuest = NormalizeQuestText(questName)
-    local moduleNpcName = GetQuestModuleNpcName(questName, questId)
-
-    local function scoreModel(model, bestNPC, bestScore, bestDistance)
-        if not model or not model:IsA("Model") then
-            return bestNPC, bestScore, bestDistance
-        end
-
-        local score = ScoreQuestNPC(model, questName, questId, moduleNpcName)
-        if score == -math.huge then
-            return bestNPC, bestScore, bestDistance
-        end
-
-        local npcRoot = model:FindFirstChild("HumanoidRootPart")
-        local distance = npcRoot and (npcRoot.Position - origin).Magnitude or math.huge
-        if score > bestScore or (score == bestScore and distance < bestDistance) then
-            return model, score, distance
-        end
-
-        return bestNPC, bestScore, bestDistance
-    end
-
     local bestNPC = nil
-    local bestScore = -math.huge
     local bestDistance = math.huge
 
-    local exactNames = {}
-    local seenNames = {}
-    local function addName(value)
-        local normalized = NormalizeQuestText(value)
-        if normalized ~= "" and not seenNames[normalized] then
-            seenNames[normalized] = true
-            table.insert(exactNames, tostring(value))
-        end
+    local containers = {}
+    if workspace:FindFirstChild("NPCs") then
+        table.insert(containers, workspace.NPCs)
+    end
+    if replicated:FindFirstChild("NPCs") then
+        table.insert(containers, replicated.NPCs)
     end
 
-    addName(questName)
-    addName(moduleNpcName)
-    addName(questName and tostring(questName):gsub("Quest%d+$", ""))
-
-    -- Fast path: Roblox's recursive FindFirstChild avoids scanning the entire map.
-    for _, name in ipairs(exactNames) do
-        local direct = workspace:FindFirstChild(name, true)
-        if direct and direct:IsA("Model") then
-            bestNPC, bestScore, bestDistance = scoreModel(direct, bestNPC, bestScore, bestDistance)
-        end
-    end
-
-    local searchRoots = {
-        workspace:FindFirstChild("NPCs"),
-        workspace:FindFirstChild("QuestNPCs"),
-        workspace:FindFirstChild("QuestGivers"),
-        replicated:FindFirstChild("NPCs"),
-        replicated:FindFirstChild("QuestNPCs"),
-        replicated:FindFirstChild("QuestGivers")
-    }
-
-    local seenModels = {}
-    for _, container in ipairs(searchRoots) do
-        if container then
-            if container:IsA("Model") and not seenModels[container] then
-                seenModels[container] = true
-                bestNPC, bestScore, bestDistance = scoreModel(container, bestNPC, bestScore, bestDistance)
-            end
-
-            for _, descendant in ipairs(container:GetDescendants()) do
-                if descendant:IsA("Model") and not seenModels[descendant] then
-                    seenModels[descendant] = true
-                    bestNPC, bestScore, bestDistance = scoreModel(descendant, bestNPC, bestScore, bestDistance)
+    for _, container in ipairs(containers) do
+        for _, npc in ipairs(container:GetChildren()) do
+            if NPCMatchesQuest(npc, questName, questId) then
+                local npcRoot = npc:FindFirstChild("HumanoidRootPart")
+                if npcRoot then
+                    local distance = (npcRoot.Position - origin).Magnitude
+                    if distance < bestDistance then
+                        bestDistance = distance
+                        bestNPC = npc
+                    end
                 end
             end
         end
     end
 
-    -- Last resort: only scan Workspace when the targeted folders produced nothing.
-    if not bestNPC then
-        for _, descendant in ipairs(workspace:GetDescendants()) do
-            if descendant:IsA("Model") then
-                bestNPC, bestScore, bestDistance = scoreModel(descendant, bestNPC, bestScore, bestDistance)
-            end
-        end
+    if bestNPC and bestNPC:FindFirstChild("HumanoidRootPart") then
+        return bestNPC.HumanoidRootPart.CFrame
     end
 
-    return bestNPC
+    return nil
 end
 
 GetQuestPointFromNPC = function(npcName)
@@ -1985,46 +1486,15 @@ GetQuestPointFromNPC = function(npcName)
         return nil
     end
 
-    if typeof(npcName) == "Instance" then
-        local root = npcName:FindFirstChild("HumanoidRootPart")
-        return root and root.CFrame or nil
+    for _, npc in pairs(workspace.NPCs:GetChildren()) do
+        if npc.Name == npcName and npc:FindFirstChild("HumanoidRootPart") then
+            return npc.HumanoidRootPart.CFrame
+        end
     end
 
-    local normalizedName = NormalizeQuestText(npcName)
-    if normalizedName == "" then
-        return nil
-    end
-
-    local searchRoots = {
-        workspace:FindFirstChild("NPCs"),
-        workspace:FindFirstChild("QuestNPCs"),
-        workspace:FindFirstChild("QuestGivers"),
-        workspace:FindFirstChild("Map"),
-        replicated:FindFirstChild("NPCs"),
-        replicated:FindFirstChild("QuestNPCs"),
-        replicated:FindFirstChild("QuestGivers")
-    }
-
-    local seen = {}
-    for _, container in ipairs(searchRoots) do
-        if container and not seen[container] then
-            seen[container] = true
-
-            if container:IsA("Model") and NormalizeQuestText(container.Name) == normalizedName then
-                local root = container:FindFirstChild("HumanoidRootPart")
-                if root then
-                    return root.CFrame
-                end
-            end
-
-            for _, npc in ipairs(container:GetDescendants()) do
-                if npc:IsA("Model") and NormalizeQuestText(npc.Name) == normalizedName then
-                    local root = npc:FindFirstChild("HumanoidRootPart")
-                    if root then
-                        return root.CFrame
-                    end
-                end
-            end
+    for _, npc in pairs(replicated.NPCs:GetChildren()) do
+        if npc.Name == npcName and npc:FindFirstChild("HumanoidRootPart") then
+            return npc.HumanoidRootPart.CFrame
         end
     end
 
@@ -2067,60 +1537,29 @@ GetQuests = function()
 end
 
 GetQuestPoint = function(questName, questId)
-    if not questName then
-        return nil
-    end
-
-    local cacheKey = GetQuestCacheKey(questName, questId)
-    local now = tick()
-    local cachedModel = QuestNpcModelCache[cacheKey]
-    local cachedAt = QuestNpcCacheTime[cacheKey] or 0
-
-    if cachedModel and cachedModel.Parent and now - cachedAt <= 5 then
-        local cachedRoot = cachedModel:FindFirstChild("HumanoidRootPart")
-        if cachedRoot then
-            QuestNpcCache[cacheKey] = cachedRoot.CFrame
-            return cachedRoot.CFrame
+    if questName then
+        local now = tick()
+        local cached = QuestNpcCache[questName]
+        local cachedAt = QuestNpcCacheTime[questName] or 0
+        if cached and now - cachedAt <= 3 then
+            return cached
         end
-    end
 
-    if QuestNpcCache[cacheKey] and now - cachedAt <= 2 then
-        return QuestNpcCache[cacheKey]
-    end
-
-    local direct = FindBestQuestNPC(questName, questId)
-    if direct and direct.Parent then
-        local directRoot = direct:FindFirstChild("HumanoidRootPart")
-        if directRoot then
-            QuestNpcModelCache[cacheKey] = direct
-            QuestNpcCache[cacheKey] = directRoot.CFrame
-            QuestNpcCacheTime[cacheKey] = now
-            return directRoot.CFrame
-        end
-    end
-
-    local moduleNpcName = GetQuestModuleNpcName(questName, questId)
-    if moduleNpcName then
-        local modulePoint = GetQuestPointFromNPC(moduleNpcName)
-        if modulePoint then
-            QuestNpcCache[cacheKey] = modulePoint
-            QuestNpcCacheTime[cacheKey] = now
-            return modulePoint
+        local direct = FindBestQuestNPC(questName, questId)
+        if direct then
+            QuestNpcCache[questName] = direct
+            QuestNpcCacheTime[questName] = now
+            return direct
         end
     end
 
     if GuideModule and GuideModule.Data and GuideModule.Data.LastClosestNPC then
         local guidePoint = GetQuestPointFromNPC(GuideModule.Data.LastClosestNPC)
         if guidePoint then
-            QuestNpcCache[cacheKey] = guidePoint
-            QuestNpcCacheTime[cacheKey] = now
             return guidePoint
         end
     end
 
-    QuestNpcCache[cacheKey] = nil
-    QuestNpcModelCache[cacheKey] = nil
-    QuestNpcCacheTime[cacheKey] = now
     return nil
 end
 
@@ -2445,78 +1884,30 @@ Tabs.Main:AddDropdown({
 
 Tabs.Main:AddSection("Farming")
 
-local FARM_LEVEL_MAX = 2800
-local QUEST_SEARCH_TIMEOUT = 10
-local MOB_SEARCH_TIMEOUT = 12
-local QUEST_START_DISTANCE = 18
-local MOB_ATTACK_DISTANCE = 45
-local QUEST_RETRY_DELAY = 1.25
-local QUEST_MAX_RETRIES = 3
-local MOB_STUCK_TIMEOUT = 4
-local MOB_RELOCATE_LIMIT = 2
-
-local FarmLevelState = {
-    enabled = false,
-    alreadyTeleported = false,
-    teleporting = false,
-    activeQuestKey = nil,
-    questStartFailures = 0,
-    nextQuestAttempt = 0,
-    lastMobSpawnPoint = nil,
-    lastMobName = nil,
-    lastMobHealth = nil,
-    lastDamageAt = 0,
-    relocateCount = 0
-}
-
-local alreadyTeleported = false
-local teleporting = false
-local lastQuestKey = nil
-local lastQuestNpcTry = 0
-local lastMobTry = 0
-local lastMobSpawnPoint = nil
-
-local function ResetFarmLevelState()
-    FarmLevelState.enabled = false
-    FarmLevelState.alreadyTeleported = false
-    FarmLevelState.teleporting = false
-    FarmLevelState.activeQuestKey = nil
-    FarmLevelState.questStartFailures = 0
-    FarmLevelState.nextQuestAttempt = 0
-    FarmLevelState.lastMobSpawnPoint = nil
-    FarmLevelState.lastMobName = nil
-    FarmLevelState.lastMobHealth = nil
-    FarmLevelState.lastDamageAt = 0
-    FarmLevelState.relocateCount = 0
-
-    alreadyTeleported = false
-    teleporting = false
-    lastQuestKey = nil
-    lastQuestNpcTry = 0
-    lastMobTry = 0
-    lastMobSpawnPoint = nil
-end
-
-plr.CharacterAdded:Connect(function()
-    ResetFarmLevelState()
-end)
-
 FarmLevel = Tabs.Main:AddToggle({
     Name = "Auto Farm Level",
     Description = "",
     Default = false,
     Callback = function(Value)
         _G.Level = Value
-        FarmLevelState.enabled = Value
-
         if not Value then
-            ResetFarmLevelState()
-        else
-            FarmLevelState.nextQuestAttempt = 0
-            FarmLevelState.questStartFailures = 0
+            alreadyTeleported = false
+            teleporting = false
         end
     end
 })
+
+local FARM_LEVEL_MAX = 2800
+local QUEST_SEARCH_TIMEOUT = 10
+local MOB_SEARCH_TIMEOUT = 8
+local QUEST_START_DISTANCE = 18
+local MOB_ATTACK_DISTANCE = 45
+local alreadyTeleported = false
+local teleporting = false
+local lastQuestKey = nil
+local lastQuestNpcTry = 0
+local lastMobTry = 0
+local lastMobSpawnPoint = nil
 
 local function GetLevelCharacter()
     local character = plr.Character
@@ -2532,58 +1923,15 @@ local function GetLevelQuestUI()
     local playerGui = plr:FindFirstChild("PlayerGui")
     local main = playerGui and playerGui:FindFirstChild("Main")
     local questUI = main and main:FindFirstChild("Quest")
+    local titleObject = questUI and questUI:FindFirstChild("Container")
+        and questUI.Container:FindFirstChild("QuestTitle")
+        and questUI.Container.QuestTitle:FindFirstChild("Title")
 
     if not questUI then
-        return nil, "", "unknown"
+        return nil, ""
     end
 
-    if not questUI.Visible then
-        return questUI, "", "none"
-    end
-
-    local candidates = {}
-    local container = questUI:FindFirstChild("Container")
-    if container then table.insert(candidates, container) end
-    table.insert(candidates, questUI)
-
-    local preferred = {"QuestTitle", "Title", "QuestName", "Name"}
-    local foundText = ""
-
-    for _, parent in ipairs(candidates) do
-        for _, childName in ipairs(preferred) do
-            local object = parent:FindFirstChild(childName, true)
-            if object and (object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox")) then
-                local text = tostring(object.Text or "")
-                if NormalizeQuestText(text) ~= "" then
-                    foundText = text
-                    break
-                end
-            end
-        end
-        if foundText ~= "" then break end
-    end
-
-    if foundText == "" then
-        for _, descendant in ipairs(questUI:GetDescendants()) do
-            if descendant:IsA("TextLabel") or descendant:IsA("TextButton") or descendant:IsA("TextBox") then
-                local text = tostring(descendant.Text or "")
-                if NormalizeQuestText(text) ~= "" and (
-                    string.find(NormalizeQuestText(text), "quest", 1, true)
-                    or string.find(NormalizeQuestText(text), "defeat", 1, true)
-                    or string.find(NormalizeQuestText(text), "kill", 1, true)
-                ) then
-                    foundText = text
-                    break
-                end
-            end
-        end
-    end
-
-    if NormalizeQuestText(foundText) == "" then
-        return questUI, foundText, "unknown"
-    end
-
-    return questUI, foundText, "active"
+    return questUI, titleObject and tostring(titleObject.Text or "") or ""
 end
 
 local function QuestTitleMatches(title, questData)
@@ -2607,26 +1955,16 @@ local function QuestTitleMatches(title, questData)
 end
 
 local function FindLevelMob(enemyName)
-    local enemyFolder = workspace:FindFirstChild("Enemies")
-    if not enemyFolder then
-        return nil
-    end
-
     local character = plr.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local origin = root and root.Position or Vector3.zero
-    local normalizedEnemy = NormalizeQuestText(enemyName)
     local nearest = nil
     local nearestDistance = math.huge
 
-    for _, mob in ipairs(enemyFolder:GetChildren()) do
+    for _, mob in ipairs(workspace.Enemies:GetChildren()) do
         local humanoid = mob:FindFirstChildOfClass("Humanoid")
         local mobRoot = mob:FindFirstChild("HumanoidRootPart")
-        local mobName = NormalizeQuestText(mob.Name)
-
-        if humanoid and mobRoot and humanoid.Health > 0 and
-            (mob.Name == enemyName or mobName == normalizedEnemy or string.find(mobName, normalizedEnemy, 1, true)) then
-
+        if humanoid and mobRoot and humanoid.Health > 0 and mob.Name == enemyName then
             local distance = (mobRoot.Position - origin).Magnitude
             if distance < nearestDistance then
                 nearest = mob
@@ -2635,12 +1973,24 @@ local function FindLevelMob(enemyName)
         end
     end
 
-    return nearest
+    if nearest then
+        return nearest
+    end
+
+    for _, mob in ipairs(replicated:GetChildren()) do
+        local humanoid = mob:FindFirstChildOfClass("Humanoid")
+        local mobRoot = mob:FindFirstChild("HumanoidRootPart")
+        if humanoid and mobRoot and humanoid.Health > 0 and mob.Name == enemyName then
+            return mob
+        end
+    end
+
+    return nil
 end
 
 local function FindLevelMobSpawn(enemyName)
-    local worldOrigin = workspace:FindFirstChild("_WorldOrigin")
-    local spawnFolder = worldOrigin and worldOrigin:FindFirstChild("EnemySpawns")
+    local spawnFolder = workspace:FindFirstChild("_WorldOrigin")
+        and workspace._WorldOrigin:FindFirstChild("EnemySpawns")
     if not spawnFolder then
         return nil
     end
@@ -2652,18 +2002,13 @@ local function FindLevelMobSpawn(enemyName)
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local origin = root and root.Position or Vector3.zero
 
-    for _, spawnPoint in ipairs(spawnFolder:GetDescendants()) do
-        if spawnPoint:IsA("BasePart") then
-            local normalizedName = NormalizeQuestText(spawnPoint.Name)
-            if normalizedName == normalizedEnemy
-                or string.find(normalizedName, normalizedEnemy, 1, true)
-                or string.find(normalizedEnemy, normalizedName, 1, true) then
-
-                local distance = (spawnPoint.Position - origin).Magnitude
-                if distance < bestDistance then
-                    bestDistance = distance
-                    bestSpawn = spawnPoint
-                end
+    for _, spawnPoint in ipairs(spawnFolder:GetChildren()) do
+        local normalizedName = NormalizeQuestText(spawnPoint.Name)
+        if normalizedName == normalizedEnemy or string.find(normalizedName, normalizedEnemy, 1, true) then
+            local distance = (spawnPoint.Position - origin).Magnitude
+            if distance < bestDistance then
+                bestDistance = distance
+                bestSpawn = spawnPoint
             end
         end
     end
@@ -2671,97 +2016,12 @@ local function FindLevelMobSpawn(enemyName)
     return bestSpawn
 end
 
-local MobTemplateCache = {}
-local function FindLevelMobTemplateCFrame(enemyName)
-    local key = NormalizeQuestText(enemyName)
-    local cached = MobTemplateCache[key]
-    if cached and cached.Parent then
-        local root = cached:FindFirstChild("HumanoidRootPart")
-        if root then
-            return root.CFrame
-        end
-    end
-
-    local normalizedEnemy = NormalizeQuestText(enemyName)
-    local bestRoot = nil
-    for _, model in ipairs(replicated:GetDescendants()) do
-        if model:IsA("Model") and NormalizeQuestText(model.Name) == normalizedEnemy then
-            local root = model:FindFirstChild("HumanoidRootPart")
-            if root and root:IsA("BasePart") then
-                MobTemplateCache[key] = model
-                bestRoot = root
-                break
-            end
-        end
-    end
-
-    return bestRoot and bestRoot.CFrame or nil
-end
-
-local function ActivateQuestPrompt(npcModel)
-    if not npcModel or not npcModel.Parent then
-        return false
-    end
-
-    local prompts = {}
-    for _, descendant in ipairs(npcModel:GetDescendants()) do
-        if descendant:IsA("ProximityPrompt") and descendant.Enabled then
-            table.insert(prompts, descendant)
-        end
-    end
-
-    if #prompts == 0 then
-        return false
-    end
-
-    table.sort(prompts, function(a, b)
-        return (a.MaxActivationDistance or 0) > (b.MaxActivationDistance or 0)
-    end)
-
-    local prompt = prompts[1]
-
-    if typeof(fireproximityprompt) == "function" then
-        local success = pcall(function()
-            fireproximityprompt(prompt, prompt.HoldDuration or 0)
-        end)
-        if success then
-            return true
-        end
-    end
-
-    local success = pcall(function()
-        prompt:InputHoldBegin()
-        task.wait((prompt.HoldDuration or 0) + 0.1)
-        prompt:InputHoldEnd()
-    end)
-
-    return success
-end
-
 local function GoToQuestNPC(questData)
     local questName = questData[3]
     local questId = questData[2]
-    local cacheKey = GetQuestCacheKey(questName, questId)
-
-    local questNpc = QuestNpcModelCache[cacheKey]
-    if not questNpc or not questNpc.Parent then
-        questNpc = FindBestQuestNPC(questName, questId)
-        if questNpc then
-            QuestNpcModelCache[cacheKey] = questNpc
-        end
-    end
-
-    local questPoint
-    if questNpc and questNpc:FindFirstChild("HumanoidRootPart") then
-        questPoint = questNpc.HumanoidRootPart.CFrame
-    else
-        questPoint = GetQuestPoint(questName, questId)
-    end
+    local questPoint = GetQuestPoint(questName, questId)
 
     if not questPoint then
-        QuestNpcCache[cacheKey] = nil
-        QuestNpcModelCache[cacheKey] = nil
-        QuestNpcCacheTime[cacheKey] = 0
         return false
     end
 
@@ -2770,7 +2030,7 @@ local function GoToQuestNPC(questData)
         return false
     end
 
-    _tp(questPoint * CFrame.new(0, 3, 0))
+    _tp(questPoint * CFrame.new(0,3,0))
 
     local startedAt = tick()
     while _G.Level and tick() - startedAt <= QUEST_SEARCH_TIMEOUT do
@@ -2783,100 +2043,49 @@ local function GoToQuestNPC(questData)
             return true
         end
 
-        task.wait(0.12)
+        task.wait(0.15)
     end
 
     return false
 end
 
 local function StartLevelQuest(questData)
-    if not _G.Level then
+    local questUI = GetLevelQuestUI()
+    if not questUI then
+        return false
+    end
+
+    local _, title = GetLevelQuestUI()
+    if questUI.Visible and QuestTitleMatches(title, questData) then
+        return true
+    end
+
+    if questUI.Visible then
+        pcall(function()
+            replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
+        end)
+        task.wait(0.35)
+    end
+
+    if not GoToQuestNPC(questData) then
         return false
     end
 
     local questName = questData[3]
     local questId = questData[2]
-    local questKey = tostring(questName) .. ":" .. tostring(questId)
-
-    if tick() < FarmLevelState.nextQuestAttempt then
-        return false
-    end
-
-    local _, title, questState = GetLevelQuestUI()
-
-    if questState == "active" then
-        if QuestTitleMatches(title, questData) then
-            FarmLevelState.activeQuestKey = questKey
-            FarmLevelState.questStartFailures = 0
-            return true
-        end
-
-        pcall(function()
-            replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
-        end)
-        FarmLevelState.nextQuestAttempt = tick() + 0.5
-        return false
-    end
-
-    if questState == "unknown" then
-        FarmLevelState.nextQuestAttempt = tick() + 0.5
-        return false
-    end
-
-    if not GoToQuestNPC(questData) then
-        FarmLevelState.questStartFailures += 1
-        FarmLevelState.nextQuestAttempt = tick() + QUEST_RETRY_DELAY
-
-        if FarmLevelState.questStartFailures >= QUEST_MAX_RETRIES then
-            local cacheKey = GetQuestCacheKey(questName, questId)
-            QuestNpcCache[cacheKey] = nil
-            QuestNpcModelCache[cacheKey] = nil
-            QuestNpcCacheTime[cacheKey] = 0
-            FarmLevelState.questStartFailures = 0
-            FarmLevelState.nextQuestAttempt = tick() + 2
-        end
-        return false
-    end
-
-    local cacheKey = GetQuestCacheKey(questName, questId)
-    local npcModel = QuestNpcModelCache[cacheKey]
 
     pcall(function()
         replicated.Remotes.CommF_:InvokeServer("StartQuest", questName, questId)
     end)
 
-    task.wait(0.2)
-
-    local _, currentTitle, currentState = GetLevelQuestUI()
-    if currentState ~= "active" or not QuestTitleMatches(currentTitle, questData) then
-        ActivateQuestPrompt(npcModel)
-        pcall(function()
-            replicated.Remotes.CommF_:InvokeServer("StartQuest", questName, questId)
-        end)
-    end
-
     local startedAt = tick()
     while _G.Level and tick() - startedAt <= 4 do
-        local _, newTitle, newState = GetLevelQuestUI()
-        if newState == "active" and QuestTitleMatches(newTitle, questData) then
-            FarmLevelState.activeQuestKey = questKey
-            FarmLevelState.questStartFailures = 0
-            FarmLevelState.nextQuestAttempt = 0
-            lastQuestKey = questKey
+        local currentQuestUI, currentTitle = GetLevelQuestUI()
+        if currentQuestUI and currentQuestUI.Visible and QuestTitleMatches(currentTitle, questData) then
+            lastQuestKey = tostring(questName) .. ":" .. tostring(questId)
             return true
         end
-        task.wait(0.18)
-    end
-
-    FarmLevelState.questStartFailures += 1
-    FarmLevelState.nextQuestAttempt = tick() + QUEST_RETRY_DELAY
-
-    if FarmLevelState.questStartFailures >= QUEST_MAX_RETRIES then
-        QuestNpcCache[cacheKey] = nil
-        QuestNpcModelCache[cacheKey] = nil
-        QuestNpcCacheTime[cacheKey] = 0
-        FarmLevelState.questStartFailures = 0
-        FarmLevelState.nextQuestAttempt = tick() + 2
+        task.wait(0.2)
     end
 
     return false
@@ -2887,121 +2096,62 @@ local function FarmLevelMob(questData)
     local searchStartedAt = tick()
 
     while _G.Level and tick() - searchStartedAt <= MOB_SEARCH_TIMEOUT do
-        local _, questTitle, questState = GetLevelQuestUI()
-
-        if questState == "none" then
-            return true
+        local questUI, questTitle = GetLevelQuestUI()
+        if not questUI or not questUI.Visible or not QuestTitleMatches(questTitle, questData) then
+            return false
         end
 
-        if questState == "unknown" then
-            task.wait(0.2)
-        else
-            if not QuestTitleMatches(questTitle, questData) then
-                pcall(function()
-                    replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
-                end)
-                FarmLevelState.activeQuestKey = nil
-                FarmLevelState.nextQuestAttempt = tick() + 0.5
-                return false
-            end
+        local _, root = GetLevelCharacter()
+        if not root then
+            return false
+        end
 
-            local _, root = GetLevelCharacter()
-            if not root then
-                return false
-            end
+        local mob = FindLevelMob(enemyName)
+        if mob and mob:FindFirstChild("HumanoidRootPart") then
+            searchStartedAt = tick()
 
-            local mob = FindLevelMob(enemyName)
-            if mob and mob:FindFirstChild("HumanoidRootPart") then
-                local mobToken = tostring(mob:GetFullName())
-                if FarmLevelState.lastMobName ~= mobToken then
-                    FarmLevelState.lastMobName = mobToken
-                    FarmLevelState.lastMobHealth = nil
-                    FarmLevelState.lastDamageAt = tick()
-                    FarmLevelState.relocateCount = 0
+            repeat
+                if not _G.Level or not mob.Parent then
+                    break
                 end
 
-                repeat
-                    if not _G.Level or not mob.Parent then
-                        break
-                    end
+                local humanoid = mob:FindFirstChildOfClass("Humanoid")
+                local mobRoot = mob:FindFirstChild("HumanoidRootPart")
+                local _, currentRoot = GetLevelCharacter()
+                if not humanoid or not mobRoot or humanoid.Health <= 0 or not currentRoot then
+                    break
+                end
 
-                    local humanoid = mob:FindFirstChildOfClass("Humanoid")
-                    local mobRoot = mob:FindFirstChild("HumanoidRootPart")
-                    local _, currentRoot = GetLevelCharacter()
-                    if not humanoid or not mobRoot or humanoid.Health <= 0 or not currentRoot then
-                        break
-                    end
+                local distance = (currentRoot.Position - mobRoot.Position).Magnitude
+                if distance > MOB_ATTACK_DISTANCE then
+                    _tp(mobRoot.CFrame * CFrame.new(0,20,0))
+                end
 
-                    if FarmLevelState.lastMobHealth == nil or humanoid.Health < FarmLevelState.lastMobHealth - 0.01 then
-                        FarmLevelState.lastMobHealth = humanoid.Health
-                        FarmLevelState.lastDamageAt = tick()
-                    end
+                Attack.Kill(mob, _G.Level)
+                task.wait(Sec)
 
-                    local distance = (currentRoot.Position - mobRoot.Position).Magnitude
-                    if distance > MOB_ATTACK_DISTANCE then
-                        _tp(mobRoot.CFrame * CFrame.new(0, 20, 0))
-                        task.wait(0.1)
-                    end
-
-                    local attacked = Attack.Kill(mob, _G.Level)
-                    if not attacked then
-                        EquipWeapon(_G.SelectWeapon)
-                        if _G.ChooseWP then
-                            weaponSc(_G.ChooseWP)
-                        end
-                    end
-
-                    if tick() - FarmLevelState.lastDamageAt >= MOB_STUCK_TIMEOUT then
-                        FarmLevelState.relocateCount += 1
-                        FarmLevelState.lastDamageAt = tick()
-
-                        if FarmLevelState.relocateCount <= MOB_RELOCATE_LIMIT then
-                            _tp(mobRoot.CFrame * CFrame.new(25, 20, 0))
-                            task.wait(0.25)
-                        else
-                            FarmLevelState.relocateCount = 0
-                            return false
-                        end
-                    end
-
-                    local _, currentQuestTitle, currentQuestState = GetLevelQuestUI()
-                    if currentQuestState == "none" then
-                        FarmLevelState.relocateCount = 0
-                        return true
-                    end
-
-                    if currentQuestState == "active" and not QuestTitleMatches(currentQuestTitle, questData) then
-                        FarmLevelState.relocateCount = 0
-                        return true
-                    end
-
-                    task.wait(Sec)
-                until not _G.Level or not mob.Parent or not Attack.Alive(mob)
-
-                if not mob.Parent or not Attack.Alive(mob) then
-                    FarmLevelState.relocateCount = 0
+                local currentQuestUI, currentQuestTitle = GetLevelQuestUI()
+                if not currentQuestUI or not currentQuestUI.Visible then
                     return true
                 end
-            end
 
-            local spawnPoint = FindLevelMobSpawn(enemyName)
-            if spawnPoint then
-                lastMobSpawnPoint = spawnPoint
-                FarmLevelState.lastMobSpawnPoint = spawnPoint
-                _tp(spawnPoint.CFrame * CFrame.new(0, 20, 0))
-                task.wait(0.45)
-            else
-                local templateCFrame = FindLevelMobTemplateCFrame(enemyName)
-                if templateCFrame then
-                    _tp(templateCFrame * CFrame.new(0, 20, 0))
-                    task.wait(0.45)
-                elseif FarmLevelState.lastMobSpawnPoint and FarmLevelState.lastMobSpawnPoint.Parent then
-                    _tp(FarmLevelState.lastMobSpawnPoint.CFrame * CFrame.new(0, 20, 0))
-                    task.wait(0.45)
-                else
-                    task.wait(0.35)
+                if not QuestTitleMatches(currentQuestTitle, questData) then
+                    return true
                 end
+            until not _G.Level or not mob.Parent or not Attack.Alive(mob)
+
+            if not mob.Parent or not Attack.Alive(mob) then
+                return true
             end
+        end
+
+        local spawnPoint = FindLevelMobSpawn(enemyName)
+        if spawnPoint then
+            lastMobSpawnPoint = spawnPoint
+            _tp(spawnPoint.CFrame * CFrame.new(0,20,0))
+            task.wait(0.35)
+        else
+            task.wait(0.35)
         end
     end
 
@@ -3022,48 +2172,24 @@ task.spawn(function()
     while task.wait(Sec) do
         if _G.Level then
             pcall(function()
-                if not FarmLevelState.enabled then
-                    FarmLevelState.enabled = true
-                end
-
                 local _, currentRoot, humanoid = GetLevelCharacter()
                 if not currentRoot or not humanoid then
-                    FarmLevelState.teleporting = false
                     teleporting = false
-                    task.wait(0.25)
                     return
                 end
 
-                local levelValue = plr:FindFirstChild("Data") and plr.Data:FindFirstChild("Level")
-                local level = levelValue and levelValue.Value or 0
-
+                local level = plr.Data.Level.Value
                 if level >= FARM_LEVEL_MAX then
                     _G.Level = false
-                    FarmLevelState.enabled = false
-                    ResetFarmLevelState()
+                    alreadyTeleported = false
+                    teleporting = false
+                    lastQuestKey = nil
                     return
-                end
-
-                local questData = QuestNeta()
-                if not questData or not questData[1] or not questData[2] or not questData[3] then
-                    task.wait(0.25)
-                    return
-                end
-
-                local questKey = tostring(questData[3]) .. ":" .. tostring(questData[2])
-                if FarmLevelState.activeQuestKey ~= questKey then
-                    FarmLevelState.activeQuestKey = nil
-                    FarmLevelState.nextQuestAttempt = 0
-                    FarmLevelState.questStartFailures = 0
-                    FarmLevelState.lastMobName = nil
-                    FarmLevelState.lastMobHealth = nil
-                    FarmLevelState.lastDamageAt = 0
-                    FarmLevelState.relocateCount = 0
                 end
 
                 local inSub = IsInSubmergedIsland()
-                if level >= 2600 and not inSub and not FarmLevelState.teleporting and not FarmLevelState.alreadyTeleported then
-                    FarmLevelState.teleporting = true
+
+                if level >= 2600 and not inSub and not teleporting and not alreadyTeleported then
                     teleporting = true
 
                     local npcPos = CFrame.new(-16269.7041, 25.2288494, 1373.65955)
@@ -3071,12 +2197,11 @@ task.spawn(function()
 
                     repeat
                         _tp(npcPos)
-                        teleportAttempts += 1
+                        teleportAttempts = teleportAttempts + 1
                         task.wait(0.15)
 
                         local _, rootNow = GetLevelCharacter()
                         if not rootNow then
-                            FarmLevelState.teleporting = false
                             teleporting = false
                             return
                         end
@@ -3087,7 +2212,6 @@ task.spawn(function()
                     until not _G.Level or teleportAttempts >= 40
 
                     if not _G.Level then
-                        FarmLevelState.teleporting = false
                         teleporting = false
                         return
                     end
@@ -3095,17 +2219,13 @@ task.spawn(function()
                     local _, rootNow = GetLevelCharacter()
                     local arrived = rootNow and (rootNow.Position - npcPos.Position).Magnitude <= 12
                     if not arrived then
-                        FarmLevelState.teleporting = false
                         teleporting = false
-                        FarmLevelState.alreadyTeleported = false
                         alreadyTeleported = false
                         return
                     end
 
                     pcall(function()
-                        local netModules = replicated:FindFirstChild("Modules")
-                        local net = netModules and netModules:FindFirstChild("Net")
-                        local travelRemote = net and net:FindFirstChild("RF/SubmarineWorkerSpeak")
+                        local travelRemote = replicated.Modules.Net:FindFirstChild("RF/SubmarineWorkerSpeak")
                         if travelRemote then
                             travelRemote:InvokeServer("TravelToSubmergedIsland")
                         end
@@ -3116,56 +2236,54 @@ task.spawn(function()
                         task.wait(0.4)
                     until not _G.Level or IsInSubmergedIsland() or tick() - startedAt > 15
 
-                    FarmLevelState.alreadyTeleported = IsInSubmergedIsland()
-                    alreadyTeleported = FarmLevelState.alreadyTeleported
-                    FarmLevelState.teleporting = false
+                    alreadyTeleported = IsInSubmergedIsland()
                     teleporting = false
                     return
                 end
 
                 if not inSub and level >= 2600 then
-                    FarmLevelState.alreadyTeleported = false
                     alreadyTeleported = false
                     return
                 end
 
-                FarmLevelState.alreadyTeleported = true
                 alreadyTeleported = true
 
-                local _, questTitle, questState = GetLevelQuestUI()
-                if questState == "unknown" then
+                local questData = QuestNeta()
+                if not questData then
                     return
                 end
 
-                if questState == "active" and not QuestTitleMatches(questTitle, questData) then
+                local questUI, questTitle = GetLevelQuestUI()
+                if not questUI then
+                    return
+                end
+
+                if questUI.Visible and not QuestTitleMatches(questTitle, questData) then
                     pcall(function()
                         replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                     end)
-                    FarmLevelState.activeQuestKey = nil
                     lastQuestKey = nil
-                    FarmLevelState.nextQuestAttempt = tick() + 0.5
+                    task.wait(0.35)
                     return
                 end
 
-                if questState == "none" then
-                    StartLevelQuest(questData)
+                if not questUI.Visible then
+                    lastQuestNpcTry = tick()
+                    if StartLevelQuest(questData) then
+                        lastQuestNpcTry = 0
+                    end
                     return
                 end
 
                 FarmLevelMob(questData)
             end)
         else
-            FarmLevelState.enabled = false
-            FarmLevelState.teleporting = false
-            FarmLevelState.alreadyTeleported = false
-            alreadyTeleported = false
             teleporting = false
-            FarmLevelState.activeQuestKey = nil
+            alreadyTeleported = false
             lastQuestKey = nil
         end
     end
 end)
-
 
 ClosetMons = Tabs.Main:AddToggle({
 Name = "Auto Farm Nearest", 
@@ -12093,28 +11211,38 @@ end
 
 Tabs.Combat:AddToggle({
     Name = "Instance Mink V3 [ INF ]",
-    Description = "Reaplica o efeito de Agility a cada respawn sem remover um efeito criado pelo jogo.",
+    Description = "",
     Default = false,
     Callback = function(Value)
-        SetInfiniteMink(Value)
+        InfAblities = Value
     end
 })
+
+spawn(function()
+    while wait(.2) do
+        pcall(function()
+            if InfAblities then
+                if not plr.Character.HumanoidRootPart:FindFirstChild("Agility") then
+                    local agility = replicated.FX["Agility"]:Clone()
+                    agility.Name = "Agility"
+                    agility.Parent = plr.Character.HumanoidRootPart
+                end
+            else
+                plr.Character.HumanoidRootPart["Agility"]:Destroy()
+            end
+        end)
+    end
+end)
 
 Tabs.Combat:AddToggle({
     Name = "Instance Energy [ INF ]",
-    Description = "Mantem a energia no teto detectado do personagem.",
+    Description = "",
     Default = false,
     Callback = function(Value)
-        SetInfiniteEnergy(Value)
-    end
-})
-
-Tabs.Combat:AddToggle({
-    Name = "Instance Health [ INF ]",
-    Description = "Mantem a vida no MaxHealth enquanto o personagem estiver vivo.",
-    Default = false,
-    Callback = function(Value)
-        SetInfiniteHealth(Value)
+        infEnergy = Value
+        if Value then
+            getInfinity_Ability("Energy", infEnergy)
+        end
     end
 })
 
@@ -12132,10 +11260,13 @@ Tabs.Combat:AddToggle({
 
 Tabs.Combat:AddToggle({
     Name = "Instance Observation Range [ INF ]",
-    Description = "Aumenta a VisionRadius e restaura o valor anterior ao desligar.",
+    Description = "",
     Default = false,
     Callback = function(Value)
-        SetInfiniteObservation(Value)
+        _G.InfiniteObRange = Value
+        if Value then
+            getInfinity_Ability("Observation", _G.InfiniteObRange)
+        end
     end
 })
 
@@ -13170,7 +12301,7 @@ local Characters = SafeWaitForChild(Workspace, "Characters")
 local Modules = SafeWaitForChild(ReplicatedStorage, "Modules")
 local Net = SafeWaitForChild(Modules, "Net")
 
-FastAttackModule.Rate = 0.03
+FastAttackModule.Rate = 0.000000002
 FastAttackModule.Enabled = true
 
 function FastAttackModule.IsAlive(target)
@@ -13217,13 +12348,8 @@ end
 
 function FastAttackModule.GetAllTargets(character)
     local enemies = FastAttackModule.GetNearbyTargets(character, Enemies)
-
-    if _G.Level then
-        return enemies
-    end
-
     local otherCharacters = FastAttackModule.GetNearbyTargets(character, Characters)
-
+    
     local allTargets = {}
     for i = 1, #enemies do
         table.insert(allTargets, enemies[i])
@@ -13237,25 +12363,22 @@ end
 function FastAttackModule.ExecuteFastAttack()
     local character = LocalPlayer.Character
     if not character then return end
-
+    
     local tool = character:FindFirstChildOfClass("Tool")
     if not tool then return end
-
+    
     local targets = FastAttackModule.GetAllTargets(character)
     if #targets < 1 then return end
-
+    
     local targetParts = FastAttackModule.GetTargetParts(targets)
     if #targetParts < 1 then return end
-
-    local attackRemote = Net:FindFirstChild("RE/RegisterAttack")
-    local hitRemote = Net:FindFirstChild("RE/RegisterHit")
-    if not attackRemote or not hitRemote then return end
-
-    pcall(function()
-        attackRemote:FireServer(FastAttackModule.Rate)
-        local targetHead = targetParts[1][2]
-        hitRemote:FireServer(targetHead, targetParts)
-    end)
+    
+    local attackRemote = Net["RE/RegisterAttack"]
+    local hitRemote = Net["RE/RegisterHit"]
+    
+    attackRemote:FireServer(FastAttackModule.Rate)
+    local targetHead = targetParts[1][2]
+    hitRemote:FireServer(targetHead, targetParts)
 end
 
 local AttackRemoteTarget
@@ -13291,16 +12414,7 @@ end
 
 InitializeHitRegistration()
 
-local LastHitRegistration = 0
-local HIT_REGISTRATION_INTERVAL = 0.03
-
 function HitRegistrationModule.Execute()
-    local now = tick()
-    if now - LastHitRegistration < HIT_REGISTRATION_INTERVAL then
-        return
-    end
-    LastHitRegistration = now
-
     local character = LocalPlayer.Character
     if not character then return end
     
@@ -13331,9 +12445,7 @@ function HitRegistrationModule.Execute()
     end
 
     ScanFolder(Enemies)
-    if not _G.Level then
-        ScanFolder(Characters)
-    end
+    ScanFolder(Characters)
 
     local tool = character:FindFirstChildOfClass("Tool")
     
