@@ -185,6 +185,28 @@ statsSetings = function(Num, value)
     end
   end
 end
+BringMobsData = setmetatable({}, {__mode = "k"})
+RevertBringMobs = function()
+    for model, original in pairs(BringMobsData) do
+        BringMobsData[model] = nil
+        pcall(function()
+            local hum = model:FindFirstChildOfClass("Humanoid")
+            local root = model:FindFirstChild("HumanoidRootPart")
+            if hum then
+                hum.WalkSpeed = original.WalkSpeed
+                hum.JumpPower = original.JumpPower
+            end
+            if root then
+                root.CanCollide = original.CanCollide
+                for _, obj in ipairs(root:GetChildren()) do
+                    if obj:IsA("BodyVelocity") and obj:GetAttribute("BringMobs") then
+                        obj:Destroy()
+                    end
+                end
+            end
+        end)
+    end
+end
 BringEnemy = function(Mon)
     if not _B then return end
     if not Mon then 
@@ -241,6 +263,7 @@ BringEnemy = function(Mon)
                         if not bv then
                             bv = Instance.new("BodyVelocity")
                             bv.Name = "BodyVelocity"
+                            bv:SetAttribute("BringMobs", true)
                             bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
                             bv.Velocity = Vector3.zero
                             bv.Parent = root
@@ -256,6 +279,9 @@ BringEnemy = function(Mon)
                         end
                         
                         -- Tắt va chạm và ngăn di chuyển
+                        if not BringMobsData[v] then
+                            BringMobsData[v] = {WalkSpeed = hum.WalkSpeed, JumpPower = hum.JumpPower, CanCollide = root.CanCollide}
+                        end
                         root.CanCollide = false
                         hum.WalkSpeed = 0
                         hum.JumpPower = 0
@@ -266,6 +292,9 @@ BringEnemy = function(Mon)
         
         -- Xử lý mob chính
         if Mon and Mon:FindFirstChild("HumanoidRootPart") then
+            if not BringMobsData[Mon] then
+                BringMobsData[Mon] = {WalkSpeed = Mon.Humanoid.WalkSpeed, JumpPower = Mon.Humanoid.JumpPower, CanCollide = Mon.HumanoidRootPart.CanCollide}
+            end
             Mon.HumanoidRootPart.CanCollide = false
             Mon.Humanoid.WalkSpeed = 0
             Mon.Humanoid.JumpPower = 0
@@ -3835,6 +3864,7 @@ Description = "",
 Default = true,
 Callback = function(Value)
   _B = Value
+  if not Value then RevertBringMobs() end
 end})
 Tabs.Settings:AddToggle({
     Name = "Auto Hop Server with time",
@@ -3847,15 +3877,15 @@ Tabs.Settings:AddToggle({
     end
 })
 
-Spawn(function()
-    while Wait(1) do
+task.spawn(function()
+    while task.wait(1) do
         if _G.AutoHopServer then
             pcall(function()
                 if not _G.HopTimer then
                     _G.HopTimer = tick()
                 end
 
-                if tick() - _G.HopTimer >= _G.HopDelay then
+                if tick() - _G.HopTimer >= (_G.HopDelay or 1800) then
                     _G.HopTimer = tick()
 
                     if syn and syn.queue_on_teleport then
@@ -6606,6 +6636,40 @@ spawn(function()
     end
   end
 end)
+UpdateIslandMirageESP = function()
+    pcall(function()
+        local origin = workspace:FindFirstChild("_WorldOrigin")
+        local locations = origin and origin:FindFirstChild("Locations")
+        local island = locations and locations:FindFirstChild("Mirage Island")
+        if not island then return end
+        local tag = island:FindFirstChild("MirageIslandESP")
+        if not MirageIslandESP then
+            if tag then tag:Destroy() end
+            return
+        end
+        if not tag then
+            tag = Instance.new("BillboardGui")
+            tag.Name = "MirageIslandESP"
+            tag.Adornee = island
+            tag.AlwaysOnTop = true
+            tag.Size = UDim2.new(0, 200, 0, 40)
+            tag.StudsOffset = Vector3.new(0, 3, 0)
+            local label = Instance.new("TextLabel")
+            label.Name = "Label"
+            label.BackgroundTransparency = 1
+            label.Size = UDim2.new(1, 0, 1, 0)
+            label.Font = Enum.Font.GothamBold
+            label.TextScaled = true
+            label.TextColor3 = Color3.fromRGB(80, 200, 255)
+            label.TextStrokeTransparency = 0
+            label.Parent = tag
+            tag.Parent = island
+        end
+        local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+        local dist = hrp and math.floor((island.Position - hrp.Position).Magnitude) or 0
+        tag.Label.Text = "Mirage Island [" .. dist .. "m]"
+    end)
+end
 Tabs.Race:AddToggle({
     Name = "Esp Mirage Island",
     Description = "",
@@ -6639,7 +6703,7 @@ spawn(function()
             if _G.AutoMysticIsland then
                 for _, location in pairs(game:GetService("Workspace")._WorldOrigin.Locations:GetChildren()) do
                     if location.Name == "Mirage Island" then
-                        topos(location.CFrame * CFrame.new(0, 333, 0))
+                        _tp(location.CFrame * CFrame.new(0, 333, 0))
                     end
                 end
             end
@@ -7258,7 +7322,7 @@ Tabs.Prehistoric:AddButton({
     Title = "Teleport To Dragon Dojo",
     Callback = function()
         game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("requestEntrance", Vector3.new(5661.5322265625, 1013.0907592773438, - 334.9649963378906))
-        topos(CFrame.new(5814.42724609375, 1208.3267822265625, 884.5785522460938))
+        _tp(CFrame.new(5814.42724609375, 1208.3267822265625, 884.5785522460938))
     end
 })
 DojoQ = Tabs.Prehistoric:AddToggle({
@@ -9857,14 +9921,13 @@ Tabs.Raids:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.TpLab = Value
-        StopTween(_G.TpLab)
         while _G.TpLab do
             wait()
             if _G.TpLab then
                 if World2 and _G.TpLab then
-                    topos(CFrame.new(-6438.73535, 250.645355, -4501.50684))
+                    _tp(CFrame.new(-6438.73535, 250.645355, -4501.50684))
                 elseif World3 and _G.TpLab then
-                    topos(CFrame.new(-5017.40869, 314.844055, -2823.0127,-0.925743818, 4.48217499e-08, -0.378151238,4.55503146e-09, 1, 1.07377559e-07,0.378151238, 9.7681621e-08, -0.925743818))
+                    _tp(CFrame.new(-5017.40869, 314.844055, -2823.0127,-0.925743818, 4.48217499e-08, -0.378151238,4.55503146e-09, 1, 1.07377559e-07,0.378151238, 9.7681621e-08, -0.925743818))
                 end
             end
         end
@@ -10686,6 +10749,20 @@ local function NoCooldown()
         end
     end
 end
+
+task.spawn(function()
+    local patched
+    while task.wait(1) do
+        if getgenv().DodgeNoCD then
+            local char = plr.Character
+            local dodge = char and char:FindFirstChild("Dodge")
+            if dodge and dodge ~= patched then
+                patched = dodge
+                pcall(NoCooldown)
+            end
+        end
+    end
+end)
 
 Tabs.Combat:AddToggle({
     Name = "Instance Mink V3 [ INF ]",
