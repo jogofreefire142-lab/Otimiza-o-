@@ -30,11 +30,14 @@ do
   Num_self = 25
 end
 
-local LUX_DOG_VERSION = "v2.2.0"
+local LUX_DOG_VERSION = "v2.3.0"
 -- Update 30 compatibility notes: Tiger is the current name for the former Leopard fruit; Magnet is a current fruit.
 -- Remote/API names are intentionally not guessed; verify them in the live client before adding new integrations.
 
 local LuxDogCharacterConnections = {}
+local LuxDogEnemyCache = {}
+local LuxDogEnemyCacheTTL = 0.08
+local LUX_DOG_MAX_LEVEL = 3000 -- Update 30: secret levels can extend progression to 3000.
 
 local function DisconnectLuxDogCharacterConnections()
   for i = #LuxDogCharacterConnections, 1, -1 do
@@ -102,10 +105,15 @@ local AllBoats = {"Beast Hunter","Lantern","Guardian","Grand Brigade","Dinghy","
 local mastery1 = {"Cookie Crafter"}
 local mastery2 = {"Reborn Skeleton"}
 local PosMsList = {["Pirate Millionaire"] = CFrame.new(-712.8272705078125, 98.5770492553711, 5711.9541015625),["Pistol Billionaire"] = CFrame.new(-723.4331665039062, 147.42906188964844, 5931.9931640625),["Dragon Crew Warrior"] = CFrame.new(7021.50439453125, 55.76270294189453, -730.1290893554688),["Dragon Crew Archer"] = CFrame.new(6625, 378, 244),["Female Islander"] = CFrame.new(4692.7939453125, 797.9766845703125, 858.8480224609375),["Venomous Assailant"] = CFrame.new(4902, 670, 39), ["Marine Commodore"] = CFrame.new(2401, 123, -7589),["Marine Rear Admiral"] = CFrame.new(3588, 229, -7085),["Fishman Raider"] = CFrame.new(-10941, 332, -8760),["Fishman Captain"] = CFrame.new(-11035, 332, -9087),["Forest Pirate"] = CFrame.new(-13446, 413, -7760),["Mythological Pirate"] = CFrame.new(-13510, 584, -6987),["Jungle Pirate"] = CFrame.new(-11778, 426, -10592),["Musketeer Pirate"] = CFrame.new(-13282, 496, -9565),["Reborn Skeleton"] = CFrame.new(-8764, 142, 5963),["Living Zombie"] = CFrame.new(-10227, 421, 6161),["Demonic Soul"] = CFrame.new(-9579, 6, 6194),["Posessed Mummy"] = CFrame.new(-9579, 6, 6194),["Peanut Scout"] = CFrame.new(-1993, 187, -10103),["Peanut President"] = CFrame.new(-2215, 159, -10474),["Ice Cream Chef"] = CFrame.new(-877, 118, -11032),["Ice Cream Commander"] = CFrame.new(-877, 118, -11032),["Cookie Crafter"] = CFrame.new(-2021, 38, -12028),["Cake Guard"] = CFrame.new(-2024, 38, -12026),["Baking Staff"] = CFrame.new(-1932, 38, -12848),["Head Baker"] = CFrame.new(-1932, 38, -12848),["Cocoa Warrior"] = CFrame.new(95, 73, -12309),["Chocolate Bar Battler"] = CFrame.new(647, 42, -12401),["Sweet Thief"] = CFrame.new(116, 36, -12478),["Candy Rebel"] = CFrame.new(47, 61, -12889),["Ghost"] = CFrame.new(5251, 5, 1111)}
+local ModulesFolder = replicated:FindFirstChild("Modules")
+local NetFolder = ModulesFolder and ModulesFolder:FindFirstChild("Net")
 local Remotes = {
-    RFJobsRemoteFunction = replicated.Modules.Net["RF/JobsRemoteFunction"], 
-    RFCraft = replicated:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/Craft")
+    RFJobsRemoteFunction = NetFolder and NetFolder:FindFirstChild("RF/JobsRemoteFunction"),
+    RFCraft = NetFolder and NetFolder:FindFirstChild("RF/Craft")
 }
+if not Remotes.RFJobsRemoteFunction or not Remotes.RFCraft then
+    warn("[Lux Dog] Optional crafting/fishing remotes were not found during startup; related features may be unavailable in this client version.")
+end
 EquipWeapon = function(text)
   if not text then return false end
   local character = plr.Character
@@ -268,6 +276,38 @@ statsSetings = function(Num, value)
     end
   end
 end
+local BringMobsData = {}
+
+local function SnapshotBringMob(enemy, humanoid, root)
+    if BringMobsData[enemy] then return end
+    BringMobsData[enemy] = {
+        WalkSpeed = humanoid.WalkSpeed,
+        JumpPower = humanoid.JumpPower,
+        CanCollide = root.CanCollide,
+        BodyVelocity = root:FindFirstChild("BodyVelocity"),
+        OwnBodyVelocity = false,
+    }
+end
+
+local function RevertBringMobs()
+    for enemy, data in pairs(BringMobsData) do
+        if enemy and enemy.Parent then
+            local humanoid = enemy:FindFirstChildOfClass("Humanoid")
+            local root = enemy:FindFirstChild("HumanoidRootPart")
+            if humanoid and data.WalkSpeed ~= nil then humanoid.WalkSpeed = data.WalkSpeed end
+            if humanoid and data.JumpPower ~= nil then humanoid.JumpPower = data.JumpPower end
+            if root and data.CanCollide ~= nil then root.CanCollide = data.CanCollide end
+            if root then
+                local bv = root:FindFirstChild("BodyVelocity")
+                if bv and bv:GetAttribute("LuxDogBringMobs") then
+                    bv:Destroy()
+                end
+            end
+        end
+        BringMobsData[enemy] = nil
+    end
+end
+
 BringEnemy = function(Mon)
     if not _B then return end
     if not Mon then 
@@ -319,11 +359,15 @@ BringEnemy = function(Mon)
                 if alive and v.Name == Mon.Name then
                     local distance = (root.Position - targetPos).Magnitude
                     if distance <= 3000 then
-                        -- Tạo BodyVelocity để giữ mob
+                        -- Snapshot original state before Lux Dog changes the mob.
+                        SnapshotBringMob(v, hum, root)
+
+                        -- Create a dedicated controller so it can be removed cleanly later.
                         local bv = root:FindFirstChild("BodyVelocity")
                         if not bv then
                             bv = Instance.new("BodyVelocity")
                             bv.Name = "BodyVelocity"
+                            bv:SetAttribute("LuxDogBringMobs", true)
                             bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
                             bv.Velocity = Vector3.zero
                             bv.Parent = root
@@ -426,16 +470,48 @@ gg.__namecall = newcclosure(function(...)
   return old(...)
 end)
 GetConnectionEnemies = function(a)
-  for i,v in pairs(replicated:GetChildren()) do
-    if v:IsA("Model") and  ((typeof(a) == "table" and table.find(a, v.Name)) or v.Name == a) and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+  local key
+  if typeof(a) == "table" then
+    local copy = {}
+    for _, name in ipairs(a) do copy[#copy + 1] = tostring(name) end
+    table.sort(copy)
+    key = table.concat(copy, "|")
+  else
+    key = tostring(a)
+  end
+
+  local now = os.clock()
+  local cached = LuxDogEnemyCache[key]
+  if cached and now - cached.time < LuxDogEnemyCacheTTL then
+    local model = cached.model
+    if model and model.Parent then
+      local humanoid = model:FindFirstChildOfClass("Humanoid")
+      if humanoid and humanoid.Health > 0 then return model end
+    end
+  end
+
+  local function matches(model)
+    return model:IsA("Model")
+      and ((typeof(a) == "table" and table.find(a, model.Name)) or model.Name == a)
+      and model:FindFirstChildOfClass("Humanoid")
+      and model:FindFirstChild("Humanoid").Health > 0
+  end
+
+  for _, v in ipairs(game.Workspace.Enemies:GetChildren()) do
+    if matches(v) then
+      LuxDogEnemyCache[key] = {model = v, time = now}
       return v
     end
   end
-  for i,v in next,game.Workspace.Enemies:GetChildren() do
-    if v:IsA("Model") and ((typeof(a) == "table" and table.find(a, v.Name)) or v.Name == a)  and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+
+  for _, v in ipairs(replicated:GetChildren()) do
+    if matches(v) then
+      LuxDogEnemyCache[key] = {model = v, time = now}
       return v
     end
   end
+
+  LuxDogEnemyCache[key] = {model = nil, time = now}
 end
 LowCpu = function()
   local decalsyeeted = true
@@ -1480,6 +1556,33 @@ Tabs.Info:AddDiscordInvite({
 })
 Tabs.Info:AddSection("Status Server")
 
+Tabs.Info:AddButton({
+    Name = "Run Compatibility Check",
+    Description = "Verifica os objetos essenciais sem executar automações.",
+    Callback = function()
+        local missing = {}
+        local function check(label, object)
+            if not object then missing[#missing + 1] = label end
+        end
+
+        check("Character", plr.Character)
+        check("HumanoidRootPart", plr.Character and plr.Character:FindFirstChild("HumanoidRootPart"))
+        check("ReplicatedStorage.Remotes", replicated:FindFirstChild("Remotes"))
+        check("CommF_", replicated:FindFirstChild("Remotes") and replicated.Remotes:FindFirstChild("CommF_"))
+        check("Modules.Net", replicated:FindFirstChild("Modules") and replicated.Modules:FindFirstChild("Net"))
+        check("Workspace.Enemies", workspace:FindFirstChild("Enemies"))
+        check("RegisterAttack", replicated:FindFirstChild("Modules") and replicated.Modules:FindFirstChild("Net") and replicated.Modules.Net:FindFirstChild("RE/RegisterAttack"))
+        check("RegisterHit", replicated:FindFirstChild("Modules") and replicated.Modules:FindFirstChild("Net") and replicated.Modules.Net:FindFirstChild("RE/RegisterHit"))
+
+        if #missing == 0 then
+            Window:Notify({Title = "Lux Dog", Content = "Compatibility check: OK | Update 30 / Level cap " .. tostring(LUX_DOG_MAX_LEVEL), Duration = 5})
+        else
+            Window:Notify({Title = "Lux Dog", Content = "Faltando: " .. table.concat(missing, ", "), Duration = 7})
+            warn("[Lux Dog] Compatibility check missing: " .. table.concat(missing, ", "))
+        end
+    end
+})
+
 local TimeZone = Tabs.Info:AddParagraph("Time Zone", "")
 
 function UpdateOS()
@@ -2242,7 +2345,7 @@ Tabs.Main:AddSection("Farm Mob")
 if World1 then
     Tabs.Main:AddDropdown({
         Name = "Select Mob",
-        Default = Bandit,
+        Default = "Bandit",
         Options = {
             "Bandit", "Monkey", "Gorilla", "Pirate", "Brute",
             "Desert Bandit", "Desert Officer", "Snow Bandit", "Snowman",
@@ -2260,7 +2363,7 @@ end
 if World2 then
     Tabs.Main:AddDropdown({
         Name = "Select Mob",
-        Default = Raider,
+        Default = "Raider",
         Options = {
             "Raider", "Mercenary", "Swan Pirate", "Factory Staff",
             "Marine Lieutenant", "Marine Captain", "Zombie", "Vampire",
@@ -2596,6 +2699,25 @@ if World3 then
         end
     })
 end
+local function NormalizeLocationName(name)
+    return tostring(name):lower():gsub("[^%w]", "")
+end
+
+local function ResolveIslandPosition(islandName, fallback)
+    local worldOrigin = workspace:FindFirstChild("_WorldOrigin")
+    local locations = worldOrigin and worldOrigin:FindFirstChild("Locations")
+    if locations and islandName then
+        local wanted = NormalizeLocationName(islandName)
+        for _, location in ipairs(locations:GetChildren()) do
+            if NormalizeLocationName(location.Name) == wanted then
+                local ok, pivot = pcall(function() return location:GetPivot() end)
+                if ok and pivot then return pivot end
+            end
+        end
+    end
+    return fallback
+end
+
 local IslandData
 if World1 then
     IslandData = Sea1_Islands
@@ -2622,7 +2744,7 @@ task.spawn(function()
         local island = IslandData[_G.SelectIsland]
         if not island then continue end
 
-        local islandPos = island.CFrame
+        local islandPos = ResolveIslandPosition(_G.SelectIsland, island.CFrame)
         local mobs = island.Mobs
 
         local MobMap = {}
@@ -3742,7 +3864,7 @@ local Mastery_Config = Tabs.Main:AddDropdown({
 Name = "Choose Island",
 		Description = "",
 		Options = posMastery,
-		Default = Bone,
+		Default = "Bone",
 		Callback = function(Value)
   SelectIsland = Value
 end})
@@ -3946,6 +4068,16 @@ Description = "",
 Default = true,
 Callback = function(Value)
   _B = Value
+  if not Value then
+    RevertBringMobs()
+  end
+end})
+Tabs.Settings:AddToggle({
+Name = "Advanced Fast Attack (Experimental)",
+Description = "Desativado por padrão para evitar concorrência entre os sistemas de ataque.",
+Default = false,
+Callback = function(Value)
+  _G.LuxDogAdvancedFastAttack = Value
 end})
 Tabs.Settings:AddToggle({
     Name = "Auto Hop Server with time",
@@ -3958,8 +4090,8 @@ Tabs.Settings:AddToggle({
     end
 })
 
-Spawn(function()
-    while Wait(1) do
+task.spawn(function()
+    while task.wait(1) do
         if _G.AutoHopServer then
             pcall(function()
                 if not _G.HopTimer then
@@ -11544,9 +11676,9 @@ Callback = function(Value)
   if  _G.Rechat == true then
     local StarterGui = game:GetService('StarterGui')
     StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false)    
-  elseif _G.chat == false then
+  elseif _G.Rechat == false then
     local StarterGui = game:GetService('StarterGui')
-    StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, true)    
+    StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, true)
   end
 end
 })
@@ -11751,7 +11883,7 @@ DayN = Tabs.Misc:AddDropdown({
 Name = "Select Time",
 Description = "",
 Options = {"Day", "Night"},
-Default = Day,
+Default = "Day",
 Callback = function(Value)
   _G.SelectDN = Value
 end})
@@ -11938,11 +12070,13 @@ local Workspace = GameService:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 
-local function SafeWaitForChild(parent, childName)
+local function SafeWaitForChild(parent, childName, timeout)
+    if not parent then return nil end
     local success, result = pcall(function()
-        return parent:WaitForChild(childName)
+        return parent:WaitForChild(childName, timeout or 10)
     end)
-    return result
+    if success then return result end
+    return nil
 end
 
 local Enemies = SafeWaitForChild(Workspace, "Enemies")
@@ -11950,8 +12084,9 @@ local Characters = SafeWaitForChild(Workspace, "Characters")
 local Modules = SafeWaitForChild(ReplicatedStorage, "Modules")
 local Net = SafeWaitForChild(Modules, "Net")
 
-FastAttackModule.Rate = 0.03
+FastAttackModule.Rate = 0.05
 FastAttackModule.Enabled = true
+_G.LuxDogAdvancedFastAttack = false
 
 function FastAttackModule.IsAlive(target)
     local humanoid = target:FindFirstChild("Humanoid")
@@ -12149,16 +12284,19 @@ end
 local function StartMainLoops()
     task.spawn(function()
         while task.wait(FastAttackModule.Rate) do
-            if FastAttackModule.Enabled then
+            if _G.LuxDogAdvancedFastAttack and FastAttackModule.Enabled then
                 pcall(FastAttackModule.ExecuteFastAttack)
             end
         end
     end)
 
-    RunService.Heartbeat:Connect(function()
-        if FastAttackModule.Enabled then
-            pcall(HitRegistrationModule.Execute)
-        end
+    local accumulator = 0
+    RunService.Heartbeat:Connect(function(deltaTime)
+        if not _G.LuxDogAdvancedFastAttack or not FastAttackModule.Enabled then return end
+        accumulator += deltaTime
+        if accumulator < 0.08 then return end
+        accumulator = 0
+        pcall(HitRegistrationModule.Execute)
     end)
 end
 
