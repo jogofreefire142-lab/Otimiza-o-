@@ -6,29 +6,16 @@ local UserInputService = game:GetService("UserInputService")
 local Player = Players.LocalPlayer
 _G.VelocidadeSalva = 260
 
-local ParentGui = nil
-if pcall(function() return game:GetService("CoreGui").Name end) then
-    ParentGui = game:GetService("CoreGui")
-else
-    ParentGui = Player:WaitForChild("PlayerGui")
+-- Destrói menus antigos se reexecutado
+if CoreGui:FindFirstChild("MenuVelocidadeBruto") then
+    CoreGui["MenuVelocidadeBruto"]:Destroy()
 end
 
-if ParentGui:FindFirstChild("MenuVelocidadeFinal2026") then
-    ParentGui["MenuVelocidadeFinal2026"]:Destroy()
-end
-
-pcall(function()
-    local textChatService = game:GetService("TextChatService")
-    if textChatService and textChatService:FindFirstChild("ChatWindowConfiguration") then
-        textChatService.ChatWindowConfiguration.Enabled = false
-        textChatService.ChatInputBarConfiguration.Enabled = false
-    end
-end)
-
+-- INTERFACE VISUAL (MENU)
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MenuVelocidadeFinal2026"
+ScreenGui.Name = "MenuVelocidadeBruto"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = ParentGui
+ScreenGui.Parent = CoreGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 190, 0, 95)
@@ -48,6 +35,7 @@ Borda.Color = Color3.fromRGB(0, 255, 150)
 Borda.Thickness = 2
 Borda.Parent = MainFrame
 
+-- BOTÃO REDONDO (MENU)
 local MenuToggle = Instance.new("TextButton")
 MenuToggle.Size = UDim2.new(0, 45, 0, 45)
 MenuToggle.Position = UDim2.new(0.05, 0, 0.2, 0)
@@ -68,6 +56,7 @@ ToggleStroke.Color = Color3.fromRGB(255, 255, 255)
 ToggleStroke.Thickness = 1.5
 ToggleStroke.Parent = MenuToggle
 
+-- ARRASTO SEM TRAVA (MIGRA PARA QUALQUER LADO)
 local function ConfigurarArrastoLiso(guiObject)
     local dragging, dragInput, dragStart, startPos
     guiObject.InputBegan:Connect(function(input)
@@ -111,7 +100,7 @@ end)
 local LabelSpeed = Instance.new("TextLabel")
 LabelSpeed.Size = UDim2.new(1, 0, 0.3, 0)
 LabelSpeed.Position = UDim2.new(0, 0, 0.1, 0)
-LabelSpeed.Text = "⚡ Ajustar Velocidade:"
+LabelSpeed.Text = "⚡ Velocidade:"
 LabelSpeed.TextColor3 = Color3.fromRGB(255, 255, 255)
 LabelSpeed.BackgroundTransparency = 1
 LabelSpeed.TextSize = 13
@@ -137,35 +126,14 @@ InputSpeed.FocusLost:Connect(function()
     if val then _G.VelocidadeSalva = val else InputSpeed.Text = tostring(_G.VelocidadeSalva) end
 end)
 
-local renderConnection
-renderConnection = RunService.Heartbeat:Connect(function()
-    if not ScreenGui or not ScreenGui.Parent then
-        if renderConnection then renderConnection:Disconnect() end
-        return
-    end
-    pcall(function()
-        local char = Player.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            local root = char:FindFirstChild("HumanoidRootPart")
-            
-            if hum and hum.Parent and root then
-                if hum.WalkSpeed ~= 16 then
-                    hum.WalkSpeed = 16
-                end
-                
-                if hum.MoveDirection.Magnitude > 0 then
-                    root.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
-                    
-                    local direcao = hum.MoveDirection
-                    local velocidadeAtual = root.AssemblyLinearVelocity
-                    local velocidadeDesejada = Vector3.new(direcao.X * _G.VelocidadeSalva, velocidadeAtual.Y, direcao.Z * _G.VelocidadeSalva)
-                    local mudancaDeVelocidade = velocidadeDesejada - velocidadeAtual
-                    
-                    local forcaMecanica = mudancaDeVelocidade * root:GetMass()
-                    root:ApplyImpulse(Vector3.new(forcaMecanica.X, 0, forcaMecanica.Z))
-                end
-            end
+-- LOOP BRUTO DE VELOCIDADE PURA (SEM OTIMIZAÇÕES)
+RunService.RenderStepped:Connect(function()
+    local char = Player.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            -- Sobrescreve o jogo infinitamente na marra
+            hum.WalkSpeed = _G.VelocidadeSalva
         end
-    end)
+    end
 end)
