@@ -1,4 +1,4 @@
--- SCRIPT SUPREMO 2026 - FLUIDEZ MÁXIMA E ZERO TRAVAMENTO
+-- SCRIPT SUPREMO 2026 - CORREÇÃO DE ABA DUPLICADA E FLUIDEZ MÁXIMA
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
@@ -10,12 +10,12 @@ local Player = Players.LocalPlayer
 _G.VelocidadeSalva = 260
 _G.PuloSalvo = 80
 
--- Remove interfaces antigas da memória RAM para evitar queda de FPS
+-- CORREÇÃO DEFINITIVA: Remove interfaces antigas antes de criar uma nova
 if CoreGui:FindFirstChild("MenuFluid2026") then
     CoreGui["MenuFluid2026"]:Destroy()
 end
 
--- 1. SISTEMA ULTRA SEGURO ANTI-CHAT (SILENT PROTECT)
+-- 1. SISTEMA ULTRA SEGURO ANTI-CHAT
 pcall(function()
     local textChatService = game:GetService("TextChatService")
     if textChatService and textChatService:FindFirstChild("ChatWindowConfiguration") then
@@ -24,9 +24,9 @@ pcall(function()
     end
 end)
 
--- 2. CRIAÇÃO DA INTERFACE VISUAL ACESSÍVEL E RETRÁTIL
+-- 2. CRIAÇÃO DA INTERFACE VISUAL PREMIUM (NOME PERMANENTE PARA A TRAVA FUNCIONAR)
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MenuFluid2026"
+ScreenGui.Name = "MenuFluid2026" -- Nome usado para a checagem de duplicação
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = CoreGui
 
@@ -37,12 +37,7 @@ MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Visible = false -- Começa fechado para focar no jogo
-MainFrame.Parent = ScreenGui
-
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
-local Borda = Instance.new("UIStroke", MainFrame)
-Borda.Color = Color3.fromRGB(0, 255, 150)
-Borda.Thickness = 2
+MainFrame.Parent = MainFrame
 
 -- Botão Redondo Flutuante (MENU)
 local MenuToggle = Instance.new("TextButton")
@@ -60,6 +55,14 @@ Instance.new("UICorner", MenuToggle).CornerRadius = UDim.new(0, 50)
 local ToggleStroke = Instance.new("UIStroke", MenuToggle)
 ToggleStroke.Color = Color3.fromRGB(255, 255, 255)
 ToggleStroke.Thickness = 1.5
+
+-- Alinha o MainFrame na hierarquia correta
+MainFrame.Parent = ScreenGui
+
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+local Borda = Instance.new("UIStroke", MainFrame)
+Borda.Color = Color3.fromRGB(0, 255, 150)
+Borda.Thickness = 2
 
 -- FUNÇÃO DE ARRASTO NATIVA DE ALTA PERFORMANCE (Touch & Mouse)
 local function AtivarArrastoFluido(guiObject)
@@ -149,8 +152,7 @@ InputJump.FocusLost:Connect(function()
     if val then _G.PuloSalvo = val else InputJump.Text = tostring(_G.PuloSalvo) end
 end)
 
--- 3. MOTOR SUPREMO DE FLUIDEZ (PRE-RENDER CAMUFLADO)
--- Sincroniza a velocidade fisicamente com a taxa de atualização da tela do seu dispositivo
+-- 3. MOTOR SUPREMO DE FLUIDEZ
 RunService.PreRender:Connect(function()
     pcall(function()
         local char = Player.Character
@@ -163,7 +165,6 @@ RunService.PreRender:Connect(function()
                 hum.WalkSpeed = _G.VelocidadeSalva
                 hum.JumpPower = _G.PuloSalvo
                 
-                -- BYPASS DE ATRITO: Faz o boneco correr liso sem perder força nas curvas do mapa
                 if root and hum.MoveDirection.Magnitude > 0 then
                     root.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
                 end
