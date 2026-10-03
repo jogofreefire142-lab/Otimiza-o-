@@ -153,7 +153,10 @@ connection = RunService.Stepped:Connect(function()
                 if not force then
                     force = Instance.new("LinearVelocity")
                     force.Name = "LinearForceExclusiva"
-                    force.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+                    -- CORREÇÃO SUPREMA: Alinhado em Modo Plano para prender o boneco no chão e não subir pro céu
+                    force.VelocityConstraintMode = Enum.VelocityConstraintMode.Plane
+                    force.PrimaryTangentAxis = Vector3.new(1, 0, 0)
+                    force.SecondaryTangentAxis = Vector3.new(0, 0, 1)
                     force.MaxForce = math.huge
                     local attachment = root:FindFirstChild("RootAttachment") or Instance.new("Attachment", root)
                     force.Attachment0 = attachment
@@ -162,10 +165,9 @@ connection = RunService.Stepped:Connect(function()
                 
                 if hum.MoveDirection.Magnitude > 0 then
                     hum.WalkSpeed = 16
-                    -- CORREÇÃO: O valor do meio (Eixo Y) foi travado em 0 para você correr firme no chão sem voar para o céu
-                    force.VectorVelocity = Vector3.new(hum.MoveDirection.X * _G.VelocidadeSalva, 0, hum.MoveDirection.Z * _G.VelocidadeSalva)
+                    force.PlaneVelocity = Vector2.new(hum.MoveDirection.X * _G.VelocidadeSalva, hum.MoveDirection.Z * _G.VelocidadeSalva)
                 else
-                    force.VectorVelocity = Vector3.new(0, 0, 0)
+                    force.PlaneVelocity = Vector2.new(0, 0)
                 end
             end
         end
