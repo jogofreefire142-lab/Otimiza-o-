@@ -1,11 +1,14 @@
+-- SERVIÇOS DO ROBLOX
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+-- CONFIGURAÇÃO GLOBAL DE ESTADO
 local Player = Players.LocalPlayer
 _G.VelocidadeSalva = 260
 
+-- DETECÇÃO E LIMPEZA DE INSTÂNCIAS DUPLICADAS (ANTI-SPAM DE ABAS)
 local ParentGui = nil
 if pcall(function() return game:GetService("CoreGui").Name end) then
     ParentGui = game:GetService("CoreGui")
@@ -17,6 +20,7 @@ if ParentGui:FindFirstChild("MenuVelocidadeFinal2026") then
     ParentGui["MenuVelocidadeFinal2026"]:Destroy()
 end
 
+-- BYPASS DE RASTREAMENTO REMOTO (ANTI-CHAT)
 pcall(function()
     local textChatService = game:GetService("TextChatService")
     if textChatService and textChatService:FindFirstChild("ChatWindowConfiguration") then
@@ -25,6 +29,7 @@ pcall(function()
     end
 end)
 
+-- CRIAÇÃO DO PROTÓTIPO DA INTERFACE (MÁXIMA COMPATIBILIDADE MOBILE/PC)
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MenuVelocidadeFinal2026"
 ScreenGui.ResetOnSpawn = false
@@ -68,6 +73,7 @@ ToggleStroke.Color = Color3.fromRGB(255, 255, 255)
 ToggleStroke.Thickness = 1.5
 ToggleStroke.Parent = MenuToggle
 
+-- ARRASTO ROBUSTO (TOUCH / MOUSE) SEM INTERRUPÇÃO DE INPUT
 local function ConfigurarArrastoLiso(guiObject)
     local dragging, dragInput, dragStart, startPos
     guiObject.InputBegan:Connect(function(input)
@@ -137,10 +143,11 @@ InputSpeed.FocusLost:Connect(function()
     if val then _G.VelocidadeSalva = val else InputSpeed.Text = tostring(_G.VelocidadeSalva) end
 end)
 
-local connection
-connection = RunService.Stepped:Connect(function()
+-- ENGINE DE VELOCIDADE PURA POR IMPULSO (MÉTODO ANTI-RESET E ANTI-ELÁSTICO)
+local renderConnection
+renderConnection = RunService.Heartbeat:Connect(function()
     if not ScreenGui or not ScreenGui.Parent then
-        if connection then connection:Disconnect() end
+        if renderConnection then renderConnection:Disconnect() end
         return
     end
     pcall(function()
@@ -148,26 +155,25 @@ connection = RunService.Stepped:Connect(function()
         if char then
             local hum = char:FindFirstChildOfClass("Humanoid")
             local root = char:FindFirstChild("HumanoidRootPart")
+            
             if hum and hum.Parent and root then
-                local force = root:FindFirstChild("LinearForceExclusiva")
-                if not force then
-                    force = Instance.new("LinearVelocity")
-                    force.Name = "LinearForceExclusiva"
-                    -- CORREÇÃO SUPREMA: Alinhado em Modo Plano para prender o boneco no chão e não subir pro céu
-                    force.VelocityConstraintMode = Enum.VelocityConstraintMode.Plane
-                    force.PrimaryTangentAxis = Vector3.new(1, 0, 0)
-                    force.SecondaryTangentAxis = Vector3.new(0, 0, 1)
-                    force.MaxForce = math.huge
-                    local attachment = root:FindFirstChild("RootAttachment") or Instance.new("Attachment", root)
-                    force.Attachment0 = attachment
-                    force.Parent = root
+                -- Força o WalkSpeed nativo baixo para passar invisível pela checagem do servidor
+                if hum.WalkSpeed ~= 16 then
+                    hum.WalkSpeed = 16
                 end
                 
+                -- Detecção de movimentação ativa
                 if hum.MoveDirection.Magnitude > 0 then
-                    hum.WalkSpeed = 16
-                    force.PlaneVelocity = Vector2.new(hum.MoveDirection.X * _G.VelocidadeSalva, hum.MoveDirection.Z * _G.VelocidadeSalva)
-                else
-                    force.PlaneVelocity = Vector2.new(0, 0)
+                    root.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+                    
+                    local direcao = hum.MoveDirection
+                    local velocidadeAtual = root.AssemblyLinearVelocity
+                    local velocidadeDesejada = Vector3.new(direcao.X * _G.VelocidadeSalva, velocidadeAtual.Y, direcao.Z * _G.VelocidadeSalva)
+                    local mudancaDeVelocidade = velocidadeDesejada - velocidadeAtual
+                    
+                    -- Multiplica a força pela massa em tempo real para anular o peso do ovo
+                    local forcaMecanica = mudancaDeVelocidade * root:GetMass()
+                    root:ApplyImpulse(Vector3.new(forcaMecanica.X, 0, forcaMecanica.Z))
                 end
             end
         end
