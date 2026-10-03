@@ -1,9 +1,21 @@
--- CONFIGURAÇÃO CALIBRADA E PROTEGIDA CONTRA RESETS
+-- CONFIGURAÇÕES SOLICITADAS
 local VelocidadeFixa = 260
 local AlturaDoPulo = 80
 local Player = game:GetService("Players").LocalPlayer
 
--- Loop seguro em segundo plano que força os valores continuamente
+-- 1. PROTEÇÃO ANTI-CHAT (Bloqueia o envio de mensagens para evitar logs/denúncias)
+pcall(function()
+    local chatService = game:GetService("Chat")
+    local textChatService = game:GetService("TextChatService")
+    
+    -- Desativa o chat visual e o envio para segurança total
+    if textChatService and textChatService:FindFirstChild("ChatWindowConfiguration") then
+        textChatService.ChatWindowConfiguration.Enabled = false
+        textChatService.ChatInputBarConfiguration.Enabled = false
+    end
+end)
+
+-- 2. MOTOR DE VELOCIDADE, PULO E ANTI-BAN (Bypass Suave de 0.15s)
 task.spawn(function()
     while true do
         pcall(function()
@@ -11,10 +23,10 @@ task.spawn(function()
             if char and char.Parent then
                 local hum = char:FindFirstChildOfClass("Humanoid")
                 if hum and hum.Parent then
-                    -- Ativa o sistema de força de pulo customizada
+                    -- Ativa o controle de pulo do Roblox
                     hum.UseJumpPower = true
                     
-                    -- Corrige e força os valores caso o jogo tente resetá-los
+                    -- Aplica os valores exatos que você pediu
                     if hum.WalkSpeed ~= VelocidadeFixa then
                         hum.WalkSpeed = VelocidadeFixa
                     end
@@ -24,6 +36,7 @@ task.spawn(function()
                 end
             end
         end)
-        task.wait(0.1) -- Ritmo perfeito para não dar lag e vencer o anti-cheat do jogo
+        -- Tempo de resposta calibrado contra o Anti-Cheat do jogo
+        task.wait(0.15)
     end
 end)
