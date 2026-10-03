@@ -1,130 +1,114 @@
+-- SERVIÇOS DO ROBLOX
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
 
-local Player = Players.LocalPlayer
-_G.VelocidadeSalva = nil
+local jogador = Players.LocalPlayer
 
--- Proteção universal para encontrar a pasta correta de armazenamento da interface (Mobile/PC)
-local ParentGui = nil
-if pcall(function() return game:GetService("CoreGui").Name end) then
-    ParentGui = game:GetService("CoreGui")
-else
-    ParentGui = Player:WaitForChild("PlayerGui")
-end
+-- CRIANDO A INTERFACE (GUI) VIA CÓDIGO
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "PainelVelocidadeOvo"
+screenGui.ResetOnSpawn = false
 
-if ParentGui:FindFirstChild("MiniMenuVelocidade") then
-    ParentGui["MiniMenuVelocidade"]:Destroy()
-end
-
--- CRIAÇÃO DA INTERFACE PEQUENA UNIVERSAL
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MiniMenuVelocidade"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = ParentGui
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 150, 0, 65)
-MainFrame.Position = UDim2.new(0.4, 0, 0.4, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Visible = true
-MainFrame.Parent = ScreenGui
-
-local CornerFrame = Instance.new("UICorner")
-CornerFrame.CornerRadius = UDim.new(0, 8)
-CornerFrame.Parent = MainFrame
-
-local Borda = Instance.new("UIStroke")
-Borda.Color = Color3.fromRGB(0, 255, 150)
-Borda.Thickness = 2
-Borda.Parent = MainFrame
-
--- ARRASTO UNIVERSAL LEVE PARA TOUCH (CELULAR) E MOUSE (PC)
-local function AtivarArrasto(frame)
-    local dragging, dragInput, dragStart, startPos
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
-            end)
-        end
-    end)
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-end
-AtivarArrasto(MainFrame)
-
-local LabelSpeed = Instance.new("TextLabel")
-LabelSpeed.Size = UDim2.new(1, 0, 0.4, 0)
-LabelSpeed.Position = UDim2.new(0, 0, 0.05, 0)
-LabelSpeed.Text = "⚡ Velocidade Sem Limites:"
-LabelSpeed.TextColor3 = Color3.fromRGB(255, 255, 255)
-LabelSpeed.BackgroundTransparency = 1
-LabelSpeed.TextSize = 11
-LabelSpeed.Font = Enum.Font.SourceSansBold
-LabelSpeed.Parent = MainFrame
-
-local InputSpeed = Instance.new("TextBox")
-InputSpeed.Size = UDim2.new(0.8, 0, 0.4, 0)
-InputSpeed.Position = UDim2.new(0.1, 0, 0.45, 0)
-InputSpeed.Text = ""
-InputSpeed.PlaceholderText = "Digite o valor..."
-InputSpeed.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-InputSpeed.TextColor3 = Color3.fromRGB(0, 255, 100)
-InputSpeed.Font = Enum.Font.SourceSansBold
-InputSpeed.TextSize = 14
-InputSpeed.Parent = MainFrame
-
-local CornerInput = Instance.new("UICorner")
-CornerInput.CornerRadius = UDim.new(0, 4)
-CornerInput.Parent = InputSpeed
-
--- MOTOR REATIVO COMPATÍVEL COM TODOS OS DISPOSITIVOS
-local function MonitorarVelocidade(character)
-    local humanoid = character:WaitForChild("Humanoid", 10)
-    if humanoid and _G.VelocidadeSalva then
-        humanoid.WalkSpeed = _G.VelocidadeSalva
-        
-        humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-            if humanoid and humanoid.Parent and _G.VelocidadeSalva and humanoid.WalkSpeed ~= _G.VelocidadeSalva then
-                humanoid.WalkSpeed = _G.VelocidadeSalva
-            end
-        end)
-    end
-end
-
-InputSpeed.FocusLost:Connect(function()
-    local val = tonumber(InputSpeed.Text)
-    if val then 
-        _G.VelocidadeSalva = val 
-        if Player.Character then
-            local hum = Player.Character:FindFirstChildOfClass("Humanoid")
-            if hum then 
-                hum.WalkSpeed = _G.VelocidadeSalva 
-                hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-                    if hum and hum.Parent and hum.WalkSpeed ~= _G.VelocidadeSalva then
-                        hum.WalkSpeed = _G.VelocidadeSalva
-                    end
-                end)
-            end
-        end
-    else 
-        InputSpeed.Text = _G.VelocidadeSalva and tostring(_G.VelocidadeSalva) or ""
-    end
+-- Tenta colocar no CoreGui (anti-deletar), se não der, vai pro PlayerGui padrão
+local sucesso, erro = pcall(function()
+	screenGui.Parent = CoreGui
 end)
+if not sucesso then
+	screenGui.Parent = jogador:WaitForChild("PlayerGui")
+end
 
-if Player.Character then task.defer(MonitorarVelocidade, Player.Character) end
-Player.CharacterAdded:Connect(function(char) task.defer(MonitorarVelocidade, char) end)
+-- Janela Principal (Pequena e Moderna)
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 160, 0, 75)
+frame.Position = UDim2.new(0.05, 0, 0.4, 0) -- Canto esquerdo da tela
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true -- Você pode arrastar a interface para onde quiser
+frame.Parent = screenGui
+
+-- Arredondar cantos do Frame
+local frameCorner = Instance.new("UICorner")
+frameCorner.CornerRadius = UDim.new(0, 8)
+frameCorner.Parent = frame
+
+-- Título
+local titulo = Instance.new("TextLabel")
+titulo.Size = UDim2.new(1, 0, 0, 25)
+titulo.BackgroundTransparency = 1
+titulo.Text = "⚡ VELOCIDADE"
+titulo.TextColor3 = Color3.fromRGB(255, 215, 0) -- Dourado cor de ovo/ouro
+titulo.Font = Enum.Font.SourceSansBold
+titulo.TextSize = 14
+titulo.Parent = frame
+
+-- Campo de Texto para digitar o número
+local caixaTexto = Instance.new("TextBox")
+caixaTexto.Size = UDim2.new(0, 70, 0, 30)
+caixaTexto.Position = UDim2.new(0, 10, 0, 32)
+caixaTexto.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+caixaTexto.BorderSizePixel = 0
+caixaTexto.Text = "16" -- Velocidade padrão do Roblox
+caixaTexto.TextColor3 = Color3.fromRGB(255, 255, 255)
+caixaTexto.Font = Enum.Font.SourceSans
+caixaTexto.TextSize = 16
+caixaTexto.ClearTextOnFocus = false
+caixaTexto.Parent = frame
+
+local caixaCorner = Instance.new("UICorner")
+caixaCorner.CornerRadius = UDim.new(0, 5)
+caixaCorner.Parent = caixaTexto
+
+-- Botão de Ativar
+local botao = Instance.new("TextButton")
+botao.Size = UDim2.new(0, 65, 0, 30)
+botao.Position = UDim2.new(0, 85, 0, 32)
+botao.BackgroundColor3 = Color3.fromRGB(0, 180, 100) -- Verde
+botao.BorderSizePixel = 0
+botao.Text = "DEFINIR"
+botao.TextColor3 = Color3.fromRGB(255, 255, 255)
+botao.Font = Enum.Font.SourceSansBold
+botao.TextSize = 14
+botao.Parent = frame
+
+local botaoCorner = Instance.new("UICorner")
+botaoCorner.CornerRadius = UDim.new(0, 5)
+botaoCorner.Parent = botao
+
+-- LÓGICA DE VELOCIDADE ATUALIZADA
+local function mudarVelocidade()
+	local personagem = jogador.Character or jogador.CharacterAdded:Wait()
+	local humanoid = personagem:WaitForChild("Humanoid")
+	
+	-- Converte o texto digitado em número
+	local novaVelocidade = tonumber(caixaTexto.Text)
+	
+	if novaVelocidade then
+		humanoid.WalkSpeed = novaVelocidade
+		
+		-- Efeito visual piscar verde no botão confirmando o clique
+		botao.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		botao.TextColor3 = Color3.fromRGB(0, 0, 0)
+		task.wait(0.1)
+		botao.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+		botao.TextColor3 = Color3.fromRGB(255, 255, 255)
+	else
+		caixaTexto.Text = "Apenas Números!"
+		task.wait(1)
+		caixaTexto.Text = tostring(humanoid.WalkSpeed)
+	end
+end
+
+-- Ativa ao clicar no botão
+botao.MouseButton1Click:Connect(mudarVelocidade)
+
+-- Mantém a velocidade ativa mesmo se o seu personagem morrer e renascer
+jogador.CharacterAdded:Connect(function(novoPersonagem)
+	local humanoid = novoPersonagem:WaitForChild("Humanoid")
+	local novaVelocidade = tonumber(caixaTexto.Text)
+	if novaVelocidade then
+		task.wait(0.5) -- Pequeno delay seguro de carregamento
+		humanoid.WalkSpeed = novaVelocidade
+	end
+end)
