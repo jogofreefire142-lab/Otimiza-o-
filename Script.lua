@@ -1,21 +1,20 @@
--- SCRIPT ATUALIZADO: VELOCIDADE TOTALMENTE LIVRE E MENU ARRASTÁVEL
+-- SCRIPT SUPREMO 2026 - ULTRA OTIMIZADO (ZERO TRAVAMENTO)
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Player = Players.LocalPlayer
 
--- Valores iniciais (Você pode mudar o tanto que quiser pelo menu)
+-- Valores padrão (Livre para configurar o tanto que quiser no menu)
 _G.VelocidadeSalva = 260
 _G.PuloSalvo = 80
 
--- Remove qualquer menu duplicado da tela
-if CoreGui:FindFirstChild("MenuVelocidadeLivre") then
-    CoreGui["MenuVelocidadeLivre"]:Destroy()
+-- Remove GUIs antigas para liberar memória RAM do celular
+if CoreGui:FindFirstChild("MenuOtimizado2026") then
+    CoreGui["MenuOtimizado2026"]:Destroy()
 end
 
--- 1. SISTEMA AUTOMÁTICO ANTI-CHAT (PROTEÇÃO CONTRA BAN)
+-- 1. SISTEMA AUTOMÁTICO ANTI-CHAT (PROTEÇÃO DE CONTA)
 pcall(function()
     local textChatService = game:GetService("TextChatService")
     if textChatService and textChatService:FindFirstChild("ChatWindowConfiguration") then
@@ -24,9 +23,9 @@ pcall(function()
     end
 end)
 
--- 2. CRIAÇÃO DA INTERFACE DO MENU (VISÍVEL DE PRIMEIRA)
+-- 2. CRIAÇÃO DA INTERFACE VISUAL PREMIUM E LEVE
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MenuVelocidadeLivre"
+ScreenGui.Name = "MenuOtimizado2026"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = CoreGui
 
@@ -36,6 +35,7 @@ MainFrame.Position = UDim2.new(0.4, 0, 0.4, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
+MainFrame.Visible = false -- Começa fechado para não dar lag na tela
 MainFrame.Parent = ScreenGui
 
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
@@ -43,34 +43,59 @@ local Borda = Instance.new("UIStroke", MainFrame)
 Borda.Color = Color3.fromRGB(0, 255, 150)
 Borda.Thickness = 2
 
--- FUNÇÃO UNIVERSAL PARA ARRASTAR O MENU EM QUALQUER DISPOSITIVO
-local function AtivarArrastoMenu(frame)
+-- Botão Redondo de Abrir/Fechar
+local MenuToggle = Instance.new("TextButton")
+MenuToggle.Size = UDim2.new(0, 45, 0, 45)
+MenuToggle.Position = UDim2.new(0.05, 0, 0.2, 0)
+MenuToggle.BackgroundColor3 = Color3.fromRGB(0, 255, 150)
+MenuToggle.TextColor3 = Color3.fromRGB(15, 15, 15)
+MenuToggle.Text = "MENU"
+MenuToggle.Font = Enum.Font.SourceSansBold
+MenuToggle.TextSize = 11
+MenuToggle.Active = true
+MenuToggle.Parent = ScreenGui
+
+Instance.new("UICorner", MenuToggle).CornerRadius = UDim.new(0, 50)
+local ToggleStroke = Instance.new("UIStroke", MenuToggle)
+ToggleStroke.Color = Color3.fromRGB(255, 255, 255)
+ToggleStroke.Thickness = 1.5
+
+-- FUNÇÃO DE ARRASTO NATIVA ULTRA LEVE (Touch e Mouse)
+local function ConfigurarArrastoLeve(guiObject)
     local dragging, dragInput, dragStart, startPos
-    frame.InputBegan:Connect(function(input)
+    guiObject.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
-            end)
+            dragging = true dragStart = input.Position startPos = guiObject.Position
+            input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
         end
     end)
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
+    guiObject.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
     end)
     UserInputService.InputChanged:Connect(function(input)
         if input == dragInput and dragging then
             local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            guiObject.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
 end
-AtivarArrastoMenu(MainFrame)
+ConfigurarArrastoLeve(MainFrame)
+ConfigurarArrastoLeve(MenuToggle)
 
--- TEXTO E CAIXA DE CONFIGURAÇÃO DA VELOCIDADE
+MenuToggle.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+    if MainFrame.Visible then
+        MenuToggle.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+        MenuToggle.Text = "X"
+        MenuToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    else
+        MenuToggle.BackgroundColor3 = Color3.fromRGB(0, 255, 150)
+        MenuToggle.Text = "MENU"
+        MenuToggle.TextColor3 = Color3.fromRGB(15, 15, 15)
+    end
+end)
+
+-- Inputs do Menu
 local LabelSpeed = Instance.new("TextLabel")
 LabelSpeed.Size = UDim2.new(1, 0, 0.2, 0)
 LabelSpeed.Position = UDim2.new(0, 0, 0.05, 0)
@@ -92,7 +117,6 @@ InputSpeed.TextSize = 15
 InputSpeed.Parent = MainFrame
 Instance.new("UICorner", InputSpeed).CornerRadius = UDim.new(0, 4)
 
--- TEXTO E CAIXA DE CONFIGURAÇÃO DO PULO
 local LabelJump = Instance.new("TextLabel")
 LabelJump.Size = UDim2.new(1, 0, 0.2, 0)
 LabelJump.Position = UDim2.new(0, 0, 0.5, 0)
@@ -114,43 +138,42 @@ InputJump.TextSize = 15
 InputJump.Parent = MainFrame
 Instance.new("UICorner", InputJump).CornerRadius = UDim.new(0, 4)
 
--- SISTEMA QUE CAPTURA E SALVA O VALOR QUE VOCÊ QUISER DIRETO NA MEMÓRIA
+-- 3. MOTOR BASEADO EM EVENTOS (MÁXIMA OTIMIZAÇÃO - ZERO LAG)
+local function ConectarPersonagem(character)
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if not humanoid then return end
+
+    local function ForcarValores()
+        humanoid.UseJumpPower = true
+        if humanoid.WalkSpeed ~= _G.VelocidadeSalva then
+            humanoid.WalkSpeed = _G.VelocidadeSalva
+        end
+        if humanoid.JumpPower ~= _G.PuloSalvo then
+            humanoid.JumpPower = _G.PuloSalvo
+        end
+    end
+
+    -- Aplica os valores imediatamente
+    ForcarValores()
+
+    -- Em vez de um loop infinito, o script só acorda se a velocidade mudar
+    humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(ForcarValores)
+    humanoid:GetPropertyChangedSignal("JumpPower"):Connect(ForcarValores)
+end
+
+-- Gerenciamento de Foco dos Inputs
 InputSpeed.FocusLost:Connect(function()
     local val = tonumber(InputSpeed.Text)
-    if val then 
-        _G.VelocidadeSalva = val -- Completamente livre! Sem travas ou limites.
-        InputSpeed.Text = tostring(_G.VelocidadeSalva)
-    else 
-        InputSpeed.Text = tostring(_G.VelocidadeSalva) 
-    end
+    if val then _G.VelocidadeSalva = val else InputSpeed.Text = tostring(_G.VelocidadeSalva) end
+    if Player.Character then ConectarPersonagem(Player.Character) end
 end)
 
 InputJump.FocusLost:Connect(function()
     local val = tonumber(InputJump.Text)
-    if val then 
-        _G.PuloSalvo = val 
-        InputJump.Text = tostring(_G.PuloSalvo)
-    else 
-        InputJump.Text = tostring(_G.PuloSalvo) 
-    end
+    if val then _G.PuloSalvo = val else InputJump.Text = tostring(_G.PuloSalvo) end
+    if Player.Character then ConectarPersonagem(Player.Character) end
 end)
 
--- 3. MOTOR SUPREMO DE REFRESH (Aplica e segura o valor a cada milissegundo)
-RunService.RenderStepped:Connect(function()
-    pcall(function()
-        local char = Player.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.UseJumpPower = true
-                -- Força o valor exato digitado no menu sem deixar o jogo resetar
-                if hum.WalkSpeed ~= _G.VelocidadeSalva then
-                    hum.WalkSpeed = _G.VelocidadeSalva
-                end
-                if hum.JumpPower ~= _G.PuloSalvo then
-                    hum.JumpPower = _G.PuloSalvo
-                end
-            end
-        end
-    end)
-end)
+-- Ativa ao entrar e sempre que renascer
+if Player.Character then ConectarPersonagem(Player.Character) end
+Player.CharacterAdded:Connect(ConectarPersonagem)
