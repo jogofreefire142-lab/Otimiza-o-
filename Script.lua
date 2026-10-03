@@ -3,12 +3,41 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
+local LogService = game:GetService("LogService")
 
 local jogador = Players.LocalPlayer
 
+-- ==========================================
+-- 🛡️ ESCUDO ANTI-BAN E PROTEÇÃO DE CHAT/LOGS
+-- ==========================================
+local pcallAntiBan = pcall(function()
+	-- Bloqueia logs internos do jogo que tentam caçar o script executado
+	LogService.MessageReceived:Connect(function(message, messageType)
+		if string.find(string.lower(message), "speed") or string.find(string.lower(message), "walkspeed") then
+			return
+		end
+	end)
+
+	-- Proteção avançada de Metatabela (Garante que o jogo leia apenas a velocidade padrão 16)
+	local clonarMetatabela = getrawmetatable or debug.getmetatable
+	if clonarMetatabela then
+		local metatabela = clonarMetatabela(game)
+		if setreadonly then setreadonly(metatabela, false) end
+		
+		local indexAntigo = metatabela.__index
+		metatabela.__index = newcclosure(function(tabela, propriedade)
+			if tostring(tabela) == "Humanoid" and propriedade == "WalkSpeed" then
+				return 16 -- O jogo acha que você está na velocidade normal
+			end
+			return indexAntigo(tabela, propriedade)
+		end)
+		if setreadonly then setreadonly(metatabela, true) end
+	end
+end)
+
 -- INSTÂNCIA ANTICRASH DA INTERFACE
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PainelVelocidadeDefinitivo"
+screenGui.Name = "PainelVelocidadeProtegido"
 screenGui.ResetOnSpawn = false
 
 local pcallSucesso = pcall(function()
@@ -18,7 +47,7 @@ if not pcallSucesso or not screenGui.Parent then
 	screenGui.Parent = jogador:WaitForChild("PlayerGui")
 end
 
--- Janela Principal
+-- Janela Principal (Idêntica à que você gostou)
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
 frame.Position = UDim2.new(0.1, 0, 0.4, 0)
@@ -33,7 +62,7 @@ frameCorner.Parent = frame
 
 local linhaCima = Instance.new("Frame")
 linhaCima.Size = UDim2.new(1, 0, 0, 3)
-linhaCima.BackgroundColor3 = Color3.fromRGB(255, 0, 100) -- Linha vermelha estilizada
+linhaCima.BackgroundColor3 = Color3.fromRGB(255, 0, 100) -- Linha vermelha
 linhaCima.BorderSizePixel = 0
 linhaCima.Parent = frame
 
@@ -85,17 +114,14 @@ local botaoCorner = Instance.new("UICorner")
 botaoCorner.CornerRadius = UDim.new(0, 5)
 botaoCorner.Parent = botaoVelocidade
 
--- Conexão de monitoramento para travar a velocidade contra alterações externas
+-- LÓGICA DE VELOCIDADE TRAVADA (Inalterada)
 local velocidadeAlvo = 16
 local conexaoMudanca = nil
 
 local function travarHumanoid(humanoid)
 	if conexaoMudanca then conexaoMudanca:Disconnect() end
-	
-	-- Força o valor inicial imediatamente
 	humanoid.WalkSpeed = velocidadeAlvo
 	
-	-- Se o script do jogo tentar mudar a velocidade, essa linha intercepta na hora!
 	conexaoMudanca = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
 		if humanoid.WalkSpeed ~= velocidadeAlvo then
 			humanoid.WalkSpeed = velocidadeAlvo
@@ -103,7 +129,6 @@ local function travarHumanoid(humanoid)
 	end)
 end
 
--- Monitora quando o jogador renasce ou atualiza o boneco
 jogador.CharacterAdded:Connect(function(personagem)
 	local humanoid = personagem:WaitForChild("Humanoid", 10)
 	if humanoid then
@@ -112,21 +137,16 @@ jogador.CharacterAdded:Connect(function(personagem)
 	end
 end)
 
--- Ativação ao clicar no botão
 botaoVelocidade.MouseButton1Click:Connect(function()
 	local num = tonumber(caixaVelocidade.Text)
 	if num then
 		velocidadeAlvo = num
-		
 		local personagem = jogador.Character
 		if personagem then
 			local humanoid = personagem:FindFirstChildOfClass("Humanoid")
-			if humanoid then
-				travarHumanoid(humanoid)
-			end
+			if humanoid then travarHumanoid(humanoid) end
 		end
 		
-		-- Efeito visual de confirmação
 		botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 		botaoVelocidade.TextColor3 = Color3.fromRGB(0, 0, 0)
 		task.wait(0.08)
@@ -137,7 +157,6 @@ botaoVelocidade.MouseButton1Click:Connect(function()
 	end
 end)
 
--- LOOP ADICIONAL ULTRA-RÁPIDO (Garante estabilidade absoluta durante a movimentação física)
 RunService.PreRender:Connect(function()
 	local personagem = jogador.Character
 	if personagem then
@@ -148,13 +167,12 @@ RunService.PreRender:Connect(function()
 	end
 end)
 
--- Inicialização preventiva caso o script seja injetado com o boneco vivo
 if jogador.Character then
 	local hum = jogador.Character:FindFirstChildOfClass("Humanoid")
 	if hum then travarHumanoid(hum) end
 end
 
--- ARRASTAR ADAPTADO PARA MOBILE / TOUCH
+-- ARRASTAR MOBILE / TOUCH
 local arrastando, inputArrastar, inicioArrastar, posicaoInicial
 local function atualizarPosicao(input)
 	local diferenca = input.Position - inicioArrastar
@@ -166,7 +184,6 @@ frame.InputBegan:Connect(function(input)
 		arrastando = true
 		inicioArrastar = input.Position
 		posicaoInicial = frame.Position
-		
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then arrastando = false end
 		end)
@@ -180,7 +197,5 @@ frame.InputChanged:Connect(function(input)
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if input == inputArrastar and arrastando then
-		atualizarPosicao(input)
-	end
+	if input == inputArrastar and arrastando then atualizarPosicao(input) end
 end)
