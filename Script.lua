@@ -1,20 +1,21 @@
--- SCRIPT SUPREMO 2026 - ULTRA OTIMIZADO (ZERO TRAVAMENTO)
+-- SCRIPT SUPREMO 2026 - FLUIDEZ MÁXIMA E ZERO TRAVAMENTO
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Player = Players.LocalPlayer
 
--- Valores padrão (Livre para configurar o tanto que quiser no menu)
+-- Valores padrão (Totalmente livres para alterar no menu)
 _G.VelocidadeSalva = 260
 _G.PuloSalvo = 80
 
--- Remove GUIs antigas para liberar memória RAM do celular
-if CoreGui:FindFirstChild("MenuOtimizado2026") then
-    CoreGui["MenuOtimizado2026"]:Destroy()
+-- Remove interfaces antigas da memória RAM para evitar queda de FPS
+if CoreGui:FindFirstChild("MenuFluid2026") then
+    CoreGui["MenuFluid2026"]:Destroy()
 end
 
--- 1. SISTEMA AUTOMÁTICO ANTI-CHAT (PROTEÇÃO DE CONTA)
+-- 1. SISTEMA ULTRA SEGURO ANTI-CHAT (SILENT PROTECT)
 pcall(function()
     local textChatService = game:GetService("TextChatService")
     if textChatService and textChatService:FindFirstChild("ChatWindowConfiguration") then
@@ -23,9 +24,9 @@ pcall(function()
     end
 end)
 
--- 2. CRIAÇÃO DA INTERFACE VISUAL PREMIUM E LEVE
+-- 2. CRIAÇÃO DA INTERFACE VISUAL ACESSÍVEL E RETRÁTIL
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MenuOtimizado2026"
+ScreenGui.Name = "MenuFluid2026"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = CoreGui
 
@@ -35,7 +36,7 @@ MainFrame.Position = UDim2.new(0.4, 0, 0.4, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
-MainFrame.Visible = false -- Começa fechado para não dar lag na tela
+MainFrame.Visible = false -- Começa fechado para focar no jogo
 MainFrame.Parent = ScreenGui
 
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
@@ -43,7 +44,7 @@ local Borda = Instance.new("UIStroke", MainFrame)
 Borda.Color = Color3.fromRGB(0, 255, 150)
 Borda.Thickness = 2
 
--- Botão Redondo de Abrir/Fechar
+-- Botão Redondo Flutuante (MENU)
 local MenuToggle = Instance.new("TextButton")
 MenuToggle.Size = UDim2.new(0, 45, 0, 45)
 MenuToggle.Position = UDim2.new(0.05, 0, 0.2, 0)
@@ -60,8 +61,8 @@ local ToggleStroke = Instance.new("UIStroke", MenuToggle)
 ToggleStroke.Color = Color3.fromRGB(255, 255, 255)
 ToggleStroke.Thickness = 1.5
 
--- FUNÇÃO DE ARRASTO NATIVA ULTRA LEVE (Touch e Mouse)
-local function ConfigurarArrastoLeve(guiObject)
+-- FUNÇÃO DE ARRASTO NATIVA DE ALTA PERFORMANCE (Touch & Mouse)
+local function AtivarArrastoFluido(guiObject)
     local dragging, dragInput, dragStart, startPos
     guiObject.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -79,8 +80,8 @@ local function ConfigurarArrastoLeve(guiObject)
         end
     end)
 end
-ConfigurarArrastoLeve(MainFrame)
-ConfigurarArrastoLeve(MenuToggle)
+AtivarArrastoFluido(MainFrame)
+AtivarArrastoFluido(MenuToggle)
 
 MenuToggle.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
@@ -95,11 +96,11 @@ MenuToggle.MouseButton1Click:Connect(function()
     end
 end)
 
--- Inputs do Menu
+-- Elementos de Texto e Inputs
 local LabelSpeed = Instance.new("TextLabel")
 LabelSpeed.Size = UDim2.new(1, 0, 0.2, 0)
 LabelSpeed.Position = UDim2.new(0, 0, 0.05, 0)
-LabelSpeed.Text = "⚡ Digite a Velocidade:"
+LabelSpeed.Text = "⚡ Velocidade Livre:"
 LabelSpeed.TextColor3 = Color3.fromRGB(255, 255, 255)
 LabelSpeed.BackgroundTransparency = 1
 LabelSpeed.TextSize = 13
@@ -138,42 +139,35 @@ InputJump.TextSize = 15
 InputJump.Parent = MainFrame
 Instance.new("UICorner", InputJump).CornerRadius = UDim.new(0, 4)
 
--- 3. MOTOR BASEADO EM EVENTOS (MÁXIMA OTIMIZAÇÃO - ZERO LAG)
-local function ConectarPersonagem(character)
-    local humanoid = character:WaitForChild("Humanoid", 5)
-    if not humanoid then return end
-
-    local function ForcarValores()
-        humanoid.UseJumpPower = true
-        if humanoid.WalkSpeed ~= _G.VelocidadeSalva then
-            humanoid.WalkSpeed = _G.VelocidadeSalva
-        end
-        if humanoid.JumpPower ~= _G.PuloSalvo then
-            humanoid.JumpPower = _G.PuloSalvo
-        end
-    end
-
-    -- Aplica os valores imediatamente
-    ForcarValores()
-
-    -- Em vez de um loop infinito, o script só acorda se a velocidade mudar
-    humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(ForcarValores)
-    humanoid:GetPropertyChangedSignal("JumpPower"):Connect(ForcarValores)
-end
-
--- Gerenciamento de Foco dos Inputs
 InputSpeed.FocusLost:Connect(function()
     local val = tonumber(InputSpeed.Text)
     if val then _G.VelocidadeSalva = val else InputSpeed.Text = tostring(_G.VelocidadeSalva) end
-    if Player.Character then ConectarPersonagem(Player.Character) end
 end)
 
 InputJump.FocusLost:Connect(function()
     local val = tonumber(InputJump.Text)
     if val then _G.PuloSalvo = val else InputJump.Text = tostring(_G.PuloSalvo) end
-    if Player.Character then ConectarPersonagem(Player.Character) end
 end)
 
--- Ativa ao entrar e sempre que renascer
-if Player.Character then ConectarPersonagem(Player.Character) end
-Player.CharacterAdded:Connect(ConectarPersonagem)
+-- 3. MOTOR SUPREMO DE FLUIDEZ (PRE-RENDER CAMUFLADO)
+-- Sincroniza a velocidade fisicamente com a taxa de atualização da tela do seu dispositivo
+RunService.PreRender:Connect(function()
+    pcall(function()
+        local char = Player.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local root = char:FindFirstChild("HumanoidRootPart")
+            
+            if hum and hum.Parent then
+                hum.UseJumpPower = true
+                hum.WalkSpeed = _G.VelocidadeSalva
+                hum.JumpPower = _G.PuloSalvo
+                
+                -- BYPASS DE ATRITO: Faz o boneco correr liso sem perder força nas curvas do mapa
+                if root and hum.MoveDirection.Magnitude > 0 then
+                    root.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+                end
+            end
+        end
+    end)
+end)
