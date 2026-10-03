@@ -1,17 +1,14 @@
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Player = Players.LocalPlayer
 _G.VelocidadeSalva = 260
 
--- Destrói menus antigos se reexecutado
 if CoreGui:FindFirstChild("MenuVelocidadeBruto") then
     CoreGui["MenuVelocidadeBruto"]:Destroy()
 end
 
--- INTERFACE VISUAL (MENU)
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MenuVelocidadeBruto"
 ScreenGui.ResetOnSpawn = false
@@ -35,7 +32,6 @@ Borda.Color = Color3.fromRGB(0, 255, 150)
 Borda.Thickness = 2
 Borda.Parent = MainFrame
 
--- BOTÃO REDONDO (MENU)
 local MenuToggle = Instance.new("TextButton")
 MenuToggle.Size = UDim2.new(0, 45, 0, 45)
 MenuToggle.Position = UDim2.new(0.05, 0, 0.2, 0)
@@ -56,7 +52,6 @@ ToggleStroke.Color = Color3.fromRGB(255, 255, 255)
 ToggleStroke.Thickness = 1.5
 ToggleStroke.Parent = MenuToggle
 
--- ARRASTO SEM TRAVA (MIGRA PARA QUALQUER LADO)
 local function ConfigurarArrastoLiso(guiObject)
     local dragging, dragInput, dragStart, startPos
     guiObject.InputBegan:Connect(function(input)
@@ -121,19 +116,32 @@ local CornerInput = Instance.new("UICorner")
 CornerInput.CornerRadius = UDim.new(0, 4)
 CornerInput.Parent = InputSpeed
 
+local function MonitorarVelocidade(character)
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if humanoid then
+        humanoid.WalkSpeed = _G.VelocidadeSalva
+        
+        -- Escuta nativa: reage instantaneamente sem consumir CPU a cada frame
+        humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+            if humanoid.WalkSpeed ~= _G.VelocidadeSalva then
+                humanoid.WalkSpeed = _G.VelocidadeSalva
+            end
+        end)
+    end
+end
+
 InputSpeed.FocusLost:Connect(function()
     local val = tonumber(InputSpeed.Text)
-    if val then _G.VelocidadeSalva = val else InputSpeed.Text = tostring(_G.VelocidadeSalva) end
-end)
-
--- LOOP BRUTO DE VELOCIDADE PURA (SEM OTIMIZAÇÕES)
-RunService.RenderStepped:Connect(function()
-    local char = Player.Character
-    if char then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            -- Sobrescreve o jogo infinitamente na marra
-            hum.WalkSpeed = _G.VelocidadeSalva
+    if val then 
+        _G.VelocidadeSalva = val 
+        if Player.Character then
+            local hum = Player.Character:FindFirstChildOfClass("Humanoid")
+            if hum then hum.WalkSpeed = _G.VelocidadeSalva end
         end
+    else 
+        InputSpeed.Text = tostring(_G.VelocidadeSalva) 
     end
 end)
+
+if Player.Character then MonitorarVelocidade(Player.Character) end
+Player.CharacterAdded:Connect(MonitorarVelocidade)
