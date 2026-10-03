@@ -3,14 +3,12 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 
 local Player = Players.LocalPlayer
-_G.VelocidadeSalva = 260
+_G.VelocidadeSalva = nil
 
--- Garante que não crie duas caixas se reexecutado
 if CoreGui:FindFirstChild("MiniMenuVelocidade") then
     CoreGui["MiniMenuVelocidade"]:Destroy()
 end
 
--- CRIAÇÃO DA INTERFACE PEQUENA
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MiniMenuVelocidade"
 ScreenGui.ResetOnSpawn = false
@@ -30,7 +28,6 @@ local Borda = Instance.new("UIStroke", MainFrame)
 Borda.Color = Color3.fromRGB(0, 255, 150)
 Borda.Thickness = 2
 
--- SISTEMA PARA ARRASTAR O MENU PARA QUALQUER LADO
 local function AtivarArrasto(frame)
     local dragging, dragInput, dragStart, startPos
     frame.InputBegan:Connect(function(input)
@@ -57,22 +54,21 @@ local function AtivarArrasto(frame)
 end
 AtivarArrasto(MainFrame)
 
--- TEXTO
 local LabelSpeed = Instance.new("TextLabel")
 LabelSpeed.Size = UDim2.new(1, 0, 0.4, 0)
 LabelSpeed.Position = UDim2.new(0, 0, 0.05, 0)
-LabelSpeed.Text = "⚡ Velocidade:"
+LabelSpeed.Text = "⚡ Velocidade Sem Limites:"
 LabelSpeed.TextColor3 = Color3.fromRGB(255, 255, 255)
 LabelSpeed.BackgroundTransparency = 1
-LabelSpeed.TextSize = 12
+LabelSpeed.TextSize = 11
 LabelSpeed.Font = Enum.Font.SourceSansBold
 LabelSpeed.Parent = MainFrame
 
--- CAIXA PARA DIGITAR O NÚMERO
 local InputSpeed = Instance.new("TextBox")
 InputSpeed.Size = UDim2.new(0.8, 0, 0.4, 0)
 InputSpeed.Position = UDim2.new(0.1, 0, 0.45, 0)
-InputSpeed.Text = tostring(_G.VelocidadeSalva)
+InputSpeed.Text = ""
+InputSpeed.PlaceholderText = "Digite o valor..."
 InputSpeed.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
 InputSpeed.TextColor3 = Color3.fromRGB(0, 255, 100)
 InputSpeed.Font = Enum.Font.SourceSansBold
@@ -80,34 +76,38 @@ InputSpeed.TextSize = 14
 InputSpeed.Parent = MainFrame
 Instance.new("UICorner", InputSpeed).CornerRadius = UDim.new(0, 4)
 
--- MOTOR DA PRIMEIRA VERSÃO (SÓ MONITORA A MUDANÇA)
 local function MonitorarVelocidade(character)
     local humanoid = character:WaitForChild("Humanoid", 10)
-    if humanoid then
+    if humanoid and _G.VelocidadeSalva then
         humanoid.WalkSpeed = _G.VelocidadeSalva
         
         humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-            if humanoid and humanoid.Parent and humanoid.WalkSpeed ~= _G.VelocidadeSalva then
+            if humanoid and humanoid.Parent and _G.VelocidadeSalva and humanoid.WalkSpeed ~= _G.VelocidadeSalva then
                 humanoid.WalkSpeed = _G.VelocidadeSalva
             end
         end)
     end
 end
 
--- SALVA O NÚMERO QUE VOCÊ DIGITAR
 InputSpeed.FocusLost:Connect(function()
     local val = tonumber(InputSpeed.Text)
     if val then 
         _G.VelocidadeSalva = val 
         if Player.Character then
             local hum = Player.Character:FindFirstChildOfClass("Humanoid")
-            if hum then hum.WalkSpeed = _G.VelocidadeSalva end
+            if hum then 
+                hum.WalkSpeed = _G.VelocidadeSalva 
+                hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+                    if hum and hum.Parent and hum.WalkSpeed ~= _G.VelocidadeSalva then
+                        hum.WalkSpeed = _G.VelocidadeSalva
+                    end
+                end)
+            end
         end
     else 
-        InputSpeed.Text = tostring(_G.VelocidadeSalva) 
+        InputSpeed.Text = _G.VelocidadeSalva and tostring(_G.VelocidadeSalva) or ""
     end
 end)
 
--- Conecta no personagem ao nascer e renascer
 if Player.Character then task.defer(MonitorarVelocidade, Player.Character) end
 Player.CharacterAdded:Connect(function(char) task.defer(MonitorarVelocidade, char) end)
