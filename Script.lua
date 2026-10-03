@@ -1,24 +1,23 @@
--- ESPERA O JOGO CARREGAR TOTALMENTE NO CELULAR DELE
+-- ESPERA O JOGO CARREGAR TOTALMENTE
 if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
-task.wait(1) -- Pausa de segurança para o Delta processar a injeção
 
 -- SERVIÇOS UNIVERSAIS DO ROBLOX
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui", 20)
 local RunService = game:GetService("RunService")
 
 local jogador = Players.LocalPlayer
+local PlayerGui = jogador:WaitForChild("PlayerGui", 20)
 
--- INSTÂNCIA UNIVERSAL DA INTERFACE (Injeta direto no PlayerGui para evitar bugs no Delta Mobile)
+-- INSTÂNCIA UNIVERSAL DA INTERFACE
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PainelVelocidadeDeltaFix"
+screenGui.Name = "PainelVelocidadeElite"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = PlayerGui
 
--- Janela Principal (Idêntica à versão que você gostou)
+-- Janela Principal
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
 frame.Position = UDim2.new(0.1, 0, 0.4, 0)
@@ -43,10 +42,10 @@ linhaCorner.Parent = linhaCima
 
 -- Título
 local titulo = Instance.new("TextLabel")
-titulo.Size = UDim2.new(1, -25, 0, 25)
+titulo.Size = UDim2.new(1, -30, 0, 25)
 titulo.Position = UDim2.new(0, 5, 0, 3)
 titulo.BackgroundTransparency = 1
-titulo.Text = "⚡ BYPASS INDESTRUTÍVEL"
+titulo.Text = "⚡ SPEED PRO v4"
 titulo.TextColor3 = Color3.fromRGB(255, 255, 255)
 titulo.Font = Enum.Font.SourceSansBold
 titulo.TextSize = 12
@@ -85,7 +84,40 @@ local botaoCorner = Instance.new("UICorner")
 botaoCorner.CornerRadius = UDim.new(0, 5)
 botaoCorner.Parent = botaoVelocidade
 
--- LÓGICA DE VELOCIDADE TRAVADA
+-- 📱 MINI BOTÃO DE MINIMIZAR INTELIGENTE
+local botaoMinimizar = Instance.new("TextButton")
+botaoMinimizar.Size = UDim2.new(0, 18, 0, 18)
+botaoMinimizar.Position = UDim2.new(1, -23, 0, 5)
+botaoMinimizar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+botaoMinimizar.Text = "-"
+botaoMinimizar.TextColor3 = Color3.fromRGB(255, 255, 255)
+botaoMinimizar.Font = Enum.Font.SourceSansBold
+botaoMinimizar.TextSize = 12
+botaoMinimizar.Parent = frame
+
+local miniCorner = Instance.new("UICorner")
+miniCorner.CornerRadius = UDim.new(1, 0)
+miniCorner.Parent = botaoMinimizar
+
+local minimizado = false
+botaoMinimizar.MouseButton1Click:Connect(function()
+	minimizado = not minimizado
+	if minimizado then
+		frame.Size = UDim2.new(0, 180, 0, 25)
+		caixaVelocidade.Visible = false
+		botaoVelocidade.Visible = false
+		botaoMinimizar.Text = "+"
+		botaoMinimizar.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+	else
+		frame.Size = UDim2.new(0, 180, 0, 75)
+		caixaVelocidade.Visible = true
+		botaoVelocidade.Visible = true
+		botaoMinimizar.Text = "-"
+		botaoMinimizar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	end
+end)
+
+-- LÓGICA DE VELOCIDADE TRAVADA MÁXIMA
 local velocidadeAlvo = 16
 local conexaoMudanca = nil
 
@@ -128,7 +160,8 @@ botaoVelocidade.MouseButton1Click:Connect(function()
 	end
 end)
 
-RunService.PreRender:Connect(function()
+-- 🔥 ATUALIZAÇÃO DO ROBLOX: POST-SIMULATION (Deixa a câmera lisa)
+RunService.PostSimulation:Connect(function()
 	local personagem = jogador.Character
 	if personagem then
 		local humanoid = personagem:FindFirstChildOfClass("Humanoid")
