@@ -6,8 +6,15 @@ local UserInputService = game:GetService("UserInputService")
 local Player = Players.LocalPlayer
 _G.VelocidadeSalva = 260
 
-if CoreGui:FindFirstChild("MenuVelocidadeFinal2026") then
-    CoreGui["MenuVelocidadeFinal2026"]:Destroy()
+local ParentGui = nil
+if pcall(function() return game:GetService("CoreGui").Name end) then
+    ParentGui = game:GetService("CoreGui")
+else
+    ParentGui = Player:WaitForChild("PlayerGui")
+end
+
+if ParentGui:FindFirstChild("MenuVelocidadeFinal2026") then
+    ParentGui["MenuVelocidadeFinal2026"]:Destroy()
 end
 
 pcall(function()
@@ -21,7 +28,7 @@ end)
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MenuVelocidadeFinal2026"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = CoreGui
+ScreenGui.Parent = ParentGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 190, 0, 95)
@@ -131,7 +138,7 @@ InputSpeed.FocusLost:Connect(function()
 end)
 
 local connection
-connection = RunService.PreRender:Connect(function()
+connection = RunService.Stepped:Connect(function()
     if not ScreenGui or not ScreenGui.Parent then
         if connection then connection:Disconnect() end
         return
@@ -147,17 +154,18 @@ connection = RunService.PreRender:Connect(function()
                     force = Instance.new("LinearVelocity")
                     force.Name = "LinearForceExclusiva"
                     force.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
-                    force.MaxForce = 999999
+                    force.MaxForce = math.huge
                     local attachment = root:FindFirstChild("RootAttachment") or Instance.new("Attachment", root)
                     force.Attachment0 = attachment
                     force.Parent = root
                 end
+                
                 if hum.MoveDirection.Magnitude > 0 then
                     hum.WalkSpeed = 16
-                    force.VectorVelocity = Vector3.new(hum.MoveDirection.X * _G.VelocidadeSalva, root.AssemblyLinearVelocity.Y, hum.MoveDirection.Z * _G.VelocidadeSalva)
-                    root.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+                    -- CORREÇÃO: O valor do meio (Eixo Y) foi travado em 0 para você correr firme no chão sem voar para o céu
+                    force.VectorVelocity = Vector3.new(hum.MoveDirection.X * _G.VelocidadeSalva, 0, hum.MoveDirection.Z * _G.VelocidadeSalva)
                 else
-                    force.VectorVelocity = Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
+                    force.VectorVelocity = Vector3.new(0, 0, 0)
                 end
             end
         end
