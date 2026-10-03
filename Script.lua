@@ -1,53 +1,24 @@
--- SERVIÇOS DO ROBLOX
+-- ESPERA O JOGO CARREGAR TOTALMENTE NO CELULAR DELE
+if not game:IsLoaded() then
+	game.Loaded:Wait()
+end
+task.wait(1) -- Pausa de segurança para o Delta processar a injeção
+
+-- SERVIÇOS UNIVERSAIS DO ROBLOX
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
+local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui", 20)
 local RunService = game:GetService("RunService")
-local LogService = game:GetService("LogService")
 
 local jogador = Players.LocalPlayer
 
--- ==========================================
--- 🛡️ ESCUDO ANTI-BAN E PROTEÇÃO DE CHAT/LOGS
--- ==========================================
-local pcallAntiBan = pcall(function()
-	-- Bloqueia logs internos do jogo que tentam caçar o script executado
-	LogService.MessageReceived:Connect(function(message, messageType)
-		if string.find(string.lower(message), "speed") or string.find(string.lower(message), "walkspeed") then
-			return
-		end
-	end)
-
-	-- Proteção avançada de Metatabela (Garante que o jogo leia apenas a velocidade padrão 16)
-	local clonarMetatabela = getrawmetatable or debug.getmetatable
-	if clonarMetatabela then
-		local metatabela = clonarMetatabela(game)
-		if setreadonly then setreadonly(metatabela, false) end
-		
-		local indexAntigo = metatabela.__index
-		metatabela.__index = newcclosure(function(tabela, propriedade)
-			if tostring(tabela) == "Humanoid" and propriedade == "WalkSpeed" then
-				return 16 -- O jogo acha que você está na velocidade normal
-			end
-			return indexAntigo(tabela, propriedade)
-		end)
-		if setreadonly then setreadonly(metatabela, true) end
-	end
-end)
-
--- INSTÂNCIA ANTICRASH DA INTERFACE
+-- INSTÂNCIA UNIVERSAL DA INTERFACE (Injeta direto no PlayerGui para evitar bugs no Delta Mobile)
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PainelVelocidadeProtegido"
+screenGui.Name = "PainelVelocidadeDeltaFix"
 screenGui.ResetOnSpawn = false
+screenGui.Parent = PlayerGui
 
-local pcallSucesso = pcall(function()
-	screenGui.Parent = CoreGui
-end)
-if not pcallSucesso or not screenGui.Parent then
-	screenGui.Parent = jogador:WaitForChild("PlayerGui")
-end
-
--- Janela Principal (Idêntica à que você gostou)
+-- Janela Principal (Idêntica à versão que você gostou)
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
 frame.Position = UDim2.new(0.1, 0, 0.4, 0)
@@ -62,7 +33,7 @@ frameCorner.Parent = frame
 
 local linhaCima = Instance.new("Frame")
 linhaCima.Size = UDim2.new(1, 0, 0, 3)
-linhaCima.BackgroundColor3 = Color3.fromRGB(255, 0, 100) -- Linha vermelha
+linhaCima.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
 linhaCima.BorderSizePixel = 0
 linhaCima.Parent = frame
 
@@ -114,7 +85,7 @@ local botaoCorner = Instance.new("UICorner")
 botaoCorner.CornerRadius = UDim.new(0, 5)
 botaoCorner.Parent = botaoVelocidade
 
--- LÓGICA DE VELOCIDADE TRAVADA (Inalterada)
+-- LÓGICA DE VELOCIDADE TRAVADA
 local velocidadeAlvo = 16
 local conexaoMudanca = nil
 
