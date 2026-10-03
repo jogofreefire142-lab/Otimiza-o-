@@ -6,12 +6,11 @@ local RunService = game:GetService("RunService")
 
 local jogador = Players.LocalPlayer
 
--- CRIANDO A INTERFACE GRÁFICA SEGURA
+-- INSTÂNCIA ANTICRASH DA INTERFACE
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PainelVelocidadeOvo"
+screenGui.Name = "PainelVelocidadePro"
 screenGui.ResetOnSpawn = false
 
--- Fallback de Parent para funcionar em todos os executores mobiles
 local pcallSucesso = pcall(function()
 	screenGui.Parent = CoreGui
 end)
@@ -19,11 +18,11 @@ if not pcallSucesso or not screenGui.Parent then
 	screenGui.Parent = jogador:WaitForChild("PlayerGui")
 end
 
--- Janela Principal (Compacta para Celular)
+-- Janela Principal Moderna e Compacta
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
 frame.Position = UDim2.new(0.1, 0, 0.4, 0)
-frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 frame.BorderSizePixel = 0
 frame.Active = true
 frame.Parent = screenGui
@@ -32,23 +31,35 @@ local frameCorner = Instance.new("UICorner")
 frameCorner.CornerRadius = UDim.new(0, 8)
 frameCorner.Parent = frame
 
+-- Linha Estilizada Superior (Visual Hacker)
+local linhaCima = Instance.new("Frame")
+linhaCima.Size = UDim2.new(1, 0, 0, 3)
+linhaCima.BackgroundColor3 = Color3.fromRGB(255, 215, 0)
+linhaCima.BorderSizePixel = 0
+linhaCima.Parent = frame
+
+local linhaCorner = Instance.new("UICorner")
+linhaCorner.CornerRadius = UDim.new(0, 8)
+linhaCorner.Parent = linhaCima
+
 -- Título
 local titulo = Instance.new("TextLabel")
 titulo.Size = UDim2.new(1, -25, 0, 25)
+titulo.Position = UDim2.new(0, 5, 0, 3)
 titulo.BackgroundTransparency = 1
-titulo.Text = "⚡ VELOCIDADE EXTRA"
+titulo.Text = "⚡ BYPASS SPEED v3"
 titulo.TextColor3 = Color3.fromRGB(255, 215, 0)
 titulo.Font = Enum.Font.SourceSansBold
 titulo.TextSize = 13
 titulo.Parent = frame
 
--- Campo de Texto para digitar o número
+-- Campo de Texto Inteligente
 local caixaVelocidade = Instance.new("TextBox")
 caixaVelocidade.Size = UDim2.new(0, 75, 0, 30)
-caixaVelocidade.Position = UDim2.new(0, 10, 0, 32)
-caixaVelocidade.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+caixaVelocidade.Position = UDim2.new(0, 10, 0, 35)
+caixaVelocidade.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 caixaVelocidade.BorderSizePixel = 0
-caixaVelocidade.Text = "50" -- Sugestão de velocidade rápida
+caixaVelocidade.Text = "60"
 caixaVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
 caixaVelocidade.Font = Enum.Font.SourceSans
 caixaVelocidade.TextSize = 16
@@ -59,13 +70,13 @@ local caixaCorner = Instance.new("UICorner")
 caixaCorner.CornerRadius = UDim.new(0, 5)
 caixaCorner.Parent = caixaVelocidade
 
--- Botão de Ativar / Mudar
+-- Botão de Ativar Premium
 local botaoVelocidade = Instance.new("TextButton")
 botaoVelocidade.Size = UDim2.new(0, 80, 0, 30)
-botaoVelocidade.Position = UDim2.new(0, 90, 0, 32)
-botaoVelocidade.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+botaoVelocidade.Position = UDim2.new(0, 90, 0, 35)
+botaoVelocidade.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
 botaoVelocidade.BorderSizePixel = 0
-botaoVelocidade.Text = "DEFINIR"
+botaoVelocidade.Text = "FORÇAR"
 botaoVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
 botaoVelocidade.Font = Enum.Font.SourceSansBold
 botaoVelocidade.TextSize = 13
@@ -75,15 +86,15 @@ local botaoCorner = Instance.new("UICorner")
 botaoCorner.CornerRadius = UDim.new(0, 5)
 botaoCorner.Parent = botaoVelocidade
 
--- Botão de Minimizar (Ideal para não atrapalhar no celular)
+-- Botão Minimizar Redondo
 local botaoMinimizar = Instance.new("TextButton")
-botaoMinimizar.Size = UDim2.new(0, 20, 0, 20)
-botaoMinimizar.Position = UDim2.new(1, -25, 0, 3)
-botaoMinimizar.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+botaoMinimizar.Size = UDim2.new(0, 18, 0, 18)
+botaoMinimizar.Position = UDim2.new(1, -23, 0, 6)
+botaoMinimizar.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 botaoMinimizar.Text = "-"
 botaoMinimizar.TextColor3 = Color3.fromRGB(255, 255, 255)
 botaoMinimizar.Font = Enum.Font.SourceSansBold
-botaoMinimizar.TextSize = 14
+botaoMinimizar.TextSize = 12
 botaoMinimizar.Parent = frame
 
 local minimizarCorner = Instance.new("UICorner")
@@ -94,76 +105,96 @@ local minimizado = false
 botaoMinimizar.MouseButton1Click:Connect(function()
 	minimizado = not minimizado
 	if minimizado then
-		frame.Size = UDim2.new(0, 180, 0, 25)
+		frame.Size = UDim2.new(0, 180, 0, 28)
 		caixaVelocidade.Visible = false
 		botaoVelocidade.Visible = false
 		botaoMinimizar.Text = "+"
-		botaoMinimizar.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+		botaoMinimizar.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
 	else
 		frame.Size = UDim2.new(0, 180, 0, 75)
 		caixaVelocidade.Visible = true
 		botaoVelocidade.Visible = true
 		botaoMinimizar.Text = "-"
-		botaoMinimizar.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+		botaoMinimizar.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 	end
 end)
 
--- CONFIGURAÇÃO DO LOOP FORÇADO DE VELOCIDADE
-local velocidadeAtiva = 16 -- Valor inicial padrão do jogo
+-- CONTROLE LOGÍCO DA VELOCIDADE MESTRE
+local velocidadeAlvo = 16
 
 botaoVelocidade.MouseButton1Click:Connect(function()
-	local valor = tonumber(caixaVelocidade.Text)
-	if valor then
-		velocidadeAtiva = valor
+	local num = tonumber(caixaVelocidade.Text)
+	if num then
+		velocidadeAlvo = num
 		
-		-- Pisca o botão em branco para confirmar o clique no celular
+		-- Feedback Visual (Efeito Flash de Confirmação)
 		botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 		botaoVelocidade.TextColor3 = Color3.fromRGB(0, 0, 0)
-		task.wait(0.1)
-		botaoVelocidade.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+		task.wait(0.08)
+		botaoVelocidade.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
 		botaoVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
 	else
-		caixaVelocidade.Text = "Erro: Números"
-		task.wait(1)
-		caixaVelocidade.Text = tostring(velocidadeAtiva)
+		caixaVelocidade.Text = tostring(velocidadeAlvo)
 	end
 end)
 
--- Este loop roda a cada frame do jogo (Heartbeat) garantindo que nada tire sua velocidade
-RunService.Heartbeat:Connect(function()
+-- SISTEMA BYPASS: ENGANA O ANTI-CHEAT DO JOGO (Metatable Hooking)
+-- Se o executor suportar gmt/hookmetamethod, ele esconde a velocidade real contra scripts do servidor.
+local clonarMetatabela = getrawmetatable or debug.getmetatable
+if clonarMetatabela then
+	local metatabela = clonarMetatabela(game)
+	if setreadonly then setreadonly(metatabela, false) end
+	
+	local indexAntigo = metatabela.__index
+	metatabela.__index = newcclosure(function(tabela, propriedade)
+		if tostring(tabela) == "Humanoid" and propriedade == "WalkSpeed" then
+			return 16 -- Sempre finge para o jogo que a velocidade é a padrão
+		end
+		return indexAntigo(tabela, propriedade)
+	end)
+end
+
+-- LOOP DE ALTA PRECISÃO (Roda antes da renderização física do cenário)
+RunService.PreSimulation:Connect(function()
 	local personagem = jogador.Character
 	if personagem then
 		local humanoid = personagem:FindFirstChildOfClass("Humanoid")
-		if humanoid and humanoid.WalkSpeed ~= velocidadeAtiva then
-			humanoid.WalkSpeed = velocidadeAtiva
+		if humanoid then
+			-- Forçagem direta sem trancar a física do boneco
+			if humanoid.WalkSpeed ~= velocidadeAlvo then
+				humanoid.WalkSpeed = velocidadeAlvo
+			end
 		end
 	end
 end)
 
--- SISTEMA DE ARRASTAR VIA TOUCH (CELULAR) E MOUSE (PC)
-local dragging, dragInput, dragStart, startPos
-local function update(input)
-	local delta = input.Position - dragStart
-	frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+-- ARRASTAR ADAPTADO PARA MOBILE (Touch Inteligente que não desliza sozinho)
+local arrastando, inputArrastar, inicioArrastar, posicaoInicial
+local function atualizarPosicao(input)
+	local diferenca = input.Position - inicioArrastar
+	frame.Position = UDim2.new(posicaoInicial.X.Scale, posicaoInicial.X.Offset + diferenca.X, posicaoInicial.Y.Scale, posicaoInicial.Y.Offset + diferenca.Y)
 end
 
 frame.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = input.Position
-		startPos = frame.Position
+		arrastando = true
+		inicioArrastar = input.Position
+		posicaoInicial = frame.Position
+		
 		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			if input.UserInputState == Enum.UserInputState.End then arrastando = false end
 		end)
 	end
 end)
 
 frame.InputChanged:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-		dragInput = input
+		inputArrastar = input
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if input == dragInput and dragging then update(input) end
+	if input == inputArrastar and arrastando then
+		atualizarPosicao(input)
+	end
 end)
