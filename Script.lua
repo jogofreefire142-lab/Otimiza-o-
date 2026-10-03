@@ -1,4 +1,4 @@
--- SCRIPT SUPREMO 2026 - CORREÇÃO DE ABA DUPLICADA E FLUIDEZ MÁXIMA
+-- SCRIPT PREMIUM ROCO - FÍSICA LINEAR ULTRA FLUIDA (ANTI-ELÁSTICO)
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
@@ -6,16 +6,16 @@ local UserInputService = game:GetService("UserInputService")
 
 local Player = Players.LocalPlayer
 
--- Valores padrão (Totalmente livres para alterar no menu)
+-- Valores padrão calibrados por você (mude o quanto quiser no menu!)
 _G.VelocidadeSalva = 260
 _G.PuloSalvo = 80
 
--- CORREÇÃO DEFINITIVA: Remove interfaces antigas antes de criar uma nova
-if CoreGui:FindFirstChild("MenuFluid2026") then
-    CoreGui["MenuFluid2026"]:Destroy()
+-- Trava Anti-Duplicação: deleta abas antigas se você executar o código de novo
+if CoreGui:FindFirstChild("MenuPremiumLinear2026") then
+    CoreGui["MenuPremiumLinear2026"]:Destroy()
 end
 
--- 1. SISTEMA ULTRA SEGURO ANTI-CHAT
+-- 1. PROTEÇÃO DE CONTA AUTOMÁTICA (ANTI-CHAT)
 pcall(function()
     local textChatService = game:GetService("TextChatService")
     if textChatService and textChatService:FindFirstChild("ChatWindowConfiguration") then
@@ -24,9 +24,9 @@ pcall(function()
     end
 end)
 
--- 2. CRIAÇÃO DA INTERFACE VISUAL PREMIUM (NOME PERMANENTE PARA A TRAVA FUNCIONAR)
+-- 2. CRIAÇÃO DA INTERFACE DO MENU RETRÁTIL E ARRASTÁVEL
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MenuFluid2026" -- Nome usado para a checagem de duplicação
+ScreenGui.Name = "MenuPremiumLinear2026"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = CoreGui
 
@@ -36,10 +36,15 @@ MainFrame.Position = UDim2.new(0.4, 0, 0.4, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
-MainFrame.Visible = false -- Começa fechado para focar no jogo
-MainFrame.Parent = MainFrame
+MainFrame.Visible = false -- Começa fechado para manter a tela limpa
+MainFrame.Parent = ScreenGui
 
--- Botão Redondo Flutuante (MENU)
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+local Borda = Instance.new("UIStroke", MainFrame)
+Borda.Color = Color3.fromRGB(0, 255, 150)
+Borda.Thickness = 2
+
+-- Botão Flutuante Redondo (MENU)
 local MenuToggle = Instance.new("TextButton")
 MenuToggle.Size = UDim2.new(0, 45, 0, 45)
 MenuToggle.Position = UDim2.new(0.05, 0, 0.2, 0)
@@ -56,16 +61,8 @@ local ToggleStroke = Instance.new("UIStroke", MenuToggle)
 ToggleStroke.Color = Color3.fromRGB(255, 255, 255)
 ToggleStroke.Thickness = 1.5
 
--- Alinha o MainFrame na hierarquia correta
-MainFrame.Parent = ScreenGui
-
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
-local Borda = Instance.new("UIStroke", MainFrame)
-Borda.Color = Color3.fromRGB(0, 255, 150)
-Borda.Thickness = 2
-
--- FUNÇÃO DE ARRASTO NATIVA DE ALTA PERFORMANCE (Touch & Mouse)
-local function AtivarArrastoFluido(guiObject)
+-- Sistema de Arrasto Leve (Touch e Mouse) que não puxa lag
+local function ConfigurarArrasto(guiObject)
     local dragging, dragInput, dragStart, startPos
     guiObject.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -83,8 +80,8 @@ local function AtivarArrastoFluido(guiObject)
         end
     end)
 end
-AtivarArrastoFluido(MainFrame)
-AtivarArrastoFluido(MenuToggle)
+ConfigurarArrasto(MainFrame)
+ConfigurarArrasto(MenuToggle)
 
 MenuToggle.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
@@ -99,11 +96,10 @@ MenuToggle.MouseButton1Click:Connect(function()
     end
 end)
 
--- Elementos de Texto e Inputs
 local LabelSpeed = Instance.new("TextLabel")
 LabelSpeed.Size = UDim2.new(1, 0, 0.2, 0)
 LabelSpeed.Position = UDim2.new(0, 0, 0.05, 0)
-LabelSpeed.Text = "⚡ Velocidade Livre:"
+LabelSpeed.Text = "⚡ Velocidade Desejada:"
 LabelSpeed.TextColor3 = Color3.fromRGB(255, 255, 255)
 LabelSpeed.BackgroundTransparency = 1
 LabelSpeed.TextSize = 13
@@ -152,21 +148,38 @@ InputJump.FocusLost:Connect(function()
     if val then _G.PuloSalvo = val else InputJump.Text = tostring(_G.PuloSalvo) end
 end)
 
--- 3. MOTOR SUPREMO DE FLUIDEZ
-RunService.PreRender:Connect(function()
+-- 3. NOVO MOTOR DE IMPULSO LINEAR (MÁXIMA FLUIDEZ E ZERO ENGASGOS)
+RunService.Stepped:Connect(function()
     pcall(function()
         local char = Player.Character
         if char then
             local hum = char:FindFirstChildOfClass("Humanoid")
             local root = char:FindFirstChild("HumanoidRootPart")
             
-            if hum and hum.Parent then
+            if hum and hum.Parent and root then
+                -- Define o pulo alto estavelmente
                 hum.UseJumpPower = true
-                hum.WalkSpeed = _G.VelocidadeSalva
                 hum.JumpPower = _G.PuloSalvo
                 
-                if root and hum.MoveDirection.Magnitude > 0 then
-                    root.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+                -- Gerencia a força física injetada no corpo para não dar efeito elástico
+                local force = root:FindFirstChild("LinearSpeedForce")
+                if not force then
+                    force = Instance.new("LinearVelocity")
+                    force.Name = "LinearSpeedForce"
+                    force.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+                    force.MaxForce = 999999 -- Força ideal para empurrar sem bugar a física
+                    
+                    local attachment = root:FindFirstChild("RootAttachment") or Instance.new("Attachment", root)
+                    force.Attachment0 = attachment
+                    force.Parent = root
+                end
+                
+                -- Se você estiver andando, a força te empurra liso independente de estar com o ovo pesado!
+                if hum.MoveDirection.Magnitude > 0 then
+                    hum.WalkSpeed = 16 -- Deixa o valor padrão para o jogo achar que você está normal
+                    force.VectorVelocity = Vector3.new(hum.MoveDirection.X * _G.VelocidadeSalva, root.AssemblyLinearVelocity.Y, hum.MoveDirection.Z * _G.VelocidadeSalva)
+                else
+                    force.VectorVelocity = Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
                 end
             end
         end
