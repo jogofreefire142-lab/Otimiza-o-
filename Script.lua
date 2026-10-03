@@ -1,18 +1,26 @@
 local Players = game:GetService("Players")
-local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 
 local Player = Players.LocalPlayer
 _G.VelocidadeSalva = nil
 
-if CoreGui:FindFirstChild("MiniMenuVelocidade") then
-    CoreGui["MiniMenuVelocidade"]:Destroy()
+-- Proteção universal para encontrar a pasta correta de armazenamento da interface (Mobile/PC)
+local ParentGui = nil
+if pcall(function() return game:GetService("CoreGui").Name end) then
+    ParentGui = game:GetService("CoreGui")
+else
+    ParentGui = Player:WaitForChild("PlayerGui")
 end
 
+if ParentGui:FindFirstChild("MiniMenuVelocidade") then
+    ParentGui["MiniMenuVelocidade"]:Destroy()
+end
+
+-- CRIAÇÃO DA INTERFACE PEQUENA UNIVERSAL
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MiniMenuVelocidade"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = CoreGui
+ScreenGui.Parent = ParentGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 150, 0, 65)
@@ -23,11 +31,16 @@ MainFrame.Active = true
 MainFrame.Visible = true
 MainFrame.Parent = ScreenGui
 
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
-local Borda = Instance.new("UIStroke", MainFrame)
+local CornerFrame = Instance.new("UICorner")
+CornerFrame.CornerRadius = UDim.new(0, 8)
+CornerFrame.Parent = MainFrame
+
+local Borda = Instance.new("UIStroke")
 Borda.Color = Color3.fromRGB(0, 255, 150)
 Borda.Thickness = 2
+Borda.Parent = MainFrame
 
+-- ARRASTO UNIVERSAL LEVE PARA TOUCH (CELULAR) E MOUSE (PC)
 local function AtivarArrasto(frame)
     local dragging, dragInput, dragStart, startPos
     frame.InputBegan:Connect(function(input)
@@ -74,8 +87,12 @@ InputSpeed.TextColor3 = Color3.fromRGB(0, 255, 100)
 InputSpeed.Font = Enum.Font.SourceSansBold
 InputSpeed.TextSize = 14
 InputSpeed.Parent = MainFrame
-Instance.new("UICorner", InputSpeed).CornerRadius = UDim.new(0, 4)
 
+local CornerInput = Instance.new("UICorner")
+CornerInput.CornerRadius = UDim.new(0, 4)
+CornerInput.Parent = InputSpeed
+
+-- MOTOR REATIVO COMPATÍVEL COM TODOS OS DISPOSITIVOS
 local function MonitorarVelocidade(character)
     local humanoid = character:WaitForChild("Humanoid", 10)
     if humanoid and _G.VelocidadeSalva then
