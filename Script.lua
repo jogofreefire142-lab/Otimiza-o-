@@ -1,4 +1,4 @@
--- SCRIPT CORRIGIDO 2026 - VELOCIDADE PERFEITA E MENU VISÍVEL
+-- SCRIPT ATUALIZADO: VELOCIDADE TOTALMENTE LIVRE E MENU ARRASTÁVEL
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
@@ -6,16 +6,16 @@ local UserInputService = game:GetService("UserInputService")
 
 local Player = Players.LocalPlayer
 
--- Valores padrão que você definiu
+-- Valores iniciais (Você pode mudar o tanto que quiser pelo menu)
 _G.VelocidadeSalva = 260
 _G.PuloSalvo = 80
 
--- Remove qualquer menu antigo para não dar erro
-if CoreGui:FindFirstChild("MenuVelocidadeOficial") then
-    CoreGui["MenuVelocidadeOficial"]:Destroy()
+-- Remove qualquer menu duplicado da tela
+if CoreGui:FindFirstChild("MenuVelocidadeLivre") then
+    CoreGui["MenuVelocidadeLivre"]:Destroy()
 end
 
--- 1. PROTEÇÃO ANTI-CHAT AUTOMÁTICA
+-- 1. SISTEMA AUTOMÁTICO ANTI-CHAT (PROTEÇÃO CONTRA BAN)
 pcall(function()
     local textChatService = game:GetService("TextChatService")
     if textChatService and textChatService:FindFirstChild("ChatWindowConfiguration") then
@@ -24,27 +24,26 @@ pcall(function()
     end
 end)
 
--- 2. CRIAÇÃO DA INTERFACE DO MENU (Aparece direto na tela)
+-- 2. CRIAÇÃO DA INTERFACE DO MENU (VISÍVEL DE PRIMEIRA)
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MenuVelocidadeOficial"
+ScreenGui.Name = "MenuVelocidadeLivre"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = CoreGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 190, 0, 150)
-MainFrame.Position = UDim2.new(0.3, 0, 0.3, 0)
+MainFrame.Position = UDim2.new(0.4, 0, 0.4, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Parent = ScreenGui
 
--- Design moderno com cantos redondos e borda verde
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
 local Borda = Instance.new("UIStroke", MainFrame)
 Borda.Color = Color3.fromRGB(0, 255, 150)
 Borda.Thickness = 2
 
--- FUNÇÃO UNIVERSAL DE ARRASTAR O MENU (Touch e Mouse)
+-- FUNÇÃO UNIVERSAL PARA ARRASTAR O MENU EM QUALQUER DISPOSITIVO
 local function AtivarArrastoMenu(frame)
     local dragging, dragInput, dragStart, startPos
     frame.InputBegan:Connect(function(input)
@@ -71,11 +70,11 @@ local function AtivarArrastoMenu(frame)
 end
 AtivarArrastoMenu(MainFrame)
 
--- TEXTO E CAIXA DA VELOCIDADE
+-- TEXTO E CAIXA DE CONFIGURAÇÃO DA VELOCIDADE
 local LabelSpeed = Instance.new("TextLabel")
 LabelSpeed.Size = UDim2.new(1, 0, 0.2, 0)
 LabelSpeed.Position = UDim2.new(0, 0, 0.05, 0)
-LabelSpeed.Text = "⚡ Velocidade (Até 260):"
+LabelSpeed.Text = "⚡ Digite a Velocidade:"
 LabelSpeed.TextColor3 = Color3.fromRGB(255, 255, 255)
 LabelSpeed.BackgroundTransparency = 1
 LabelSpeed.TextSize = 13
@@ -93,7 +92,7 @@ InputSpeed.TextSize = 15
 InputSpeed.Parent = MainFrame
 Instance.new("UICorner", InputSpeed).CornerRadius = UDim.new(0, 4)
 
--- TEXTO E CAIXA DO PULO
+-- TEXTO E CAIXA DE CONFIGURAÇÃO DO PULO
 local LabelJump = Instance.new("TextLabel")
 LabelJump.Size = UDim2.new(1, 0, 0.2, 0)
 LabelJump.Position = UDim2.new(0, 0, 0.5, 0)
@@ -115,11 +114,11 @@ InputJump.TextSize = 15
 InputJump.Parent = MainFrame
 Instance.new("UICorner", InputJump).CornerRadius = UDim.new(0, 4)
 
--- SISTEMA QUE SALVA O QUE VOCÊ DIGITA
+-- SISTEMA QUE CAPTURA E SALVA O VALOR QUE VOCÊ QUISER DIRETO NA MEMÓRIA
 InputSpeed.FocusLost:Connect(function()
     local val = tonumber(InputSpeed.Text)
     if val then 
-        _G.VelocidadeSalva = math.clamp(val, 16, 260) -- Limita até 260 por segurança
+        _G.VelocidadeSalva = val -- Completamente livre! Sem travas ou limites.
         InputSpeed.Text = tostring(_G.VelocidadeSalva)
     else 
         InputSpeed.Text = tostring(_G.VelocidadeSalva) 
@@ -136,7 +135,7 @@ InputJump.FocusLost:Connect(function()
     end
 end)
 
--- 3. MOTOR COMPATÍVEL DE MOVIMENTAÇÃO (Não falha nunca)
+-- 3. MOTOR SUPREMO DE REFRESH (Aplica e segura o valor a cada milissegundo)
 RunService.RenderStepped:Connect(function()
     pcall(function()
         local char = Player.Character
@@ -144,7 +143,7 @@ RunService.RenderStepped:Connect(function()
             local hum = char:FindFirstChildOfClass("Humanoid")
             if hum then
                 hum.UseJumpPower = true
-                -- Força o valor escolhido no menu a cada milissegundo
+                -- Força o valor exato digitado no menu sem deixar o jogo resetar
                 if hum.WalkSpeed ~= _G.VelocidadeSalva then
                     hum.WalkSpeed = _G.VelocidadeSalva
                 end
