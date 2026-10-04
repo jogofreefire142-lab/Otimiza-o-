@@ -13,14 +13,14 @@ local PlayerGui = jogador:WaitForChild("PlayerGui", 20)
 
 -- INSTÂNCIA UNIVERSAL DA INTERFACE
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PainelVelocidadeUltra"
+screenGui.Name = "PainelVelocidadeAbaFix"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = PlayerGui
 
--- Janela Principal
+-- Janela Principal (Móvel e Responsiva)
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
-frame.Position = UDim2.new(0.1, 0, 0.4, 0)
+frame.Position = UDim2.new(0.1, 0, 0.4, 0) -- Posição inicial na esquerda
 frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 frame.BorderSizePixel = 0
 frame.Active = true
@@ -45,7 +45,7 @@ local titulo = Instance.new("TextLabel")
 titulo.Size = UDim2.new(1, -30, 0, 25)
 titulo.Position = UDim2.new(0, 5, 0, 3)
 titulo.BackgroundTransparency = 1
-titulo.Text = "⚡ SPEED HYPER v7"
+titulo.Text = "⚡ SPEED HYPER v8"
 titulo.TextColor3 = Color3.fromRGB(255, 255, 255)
 titulo.Font = Enum.Font.SourceSansBold
 titulo.TextSize = 12
@@ -57,7 +57,7 @@ caixaVelocidade.Size = UDim2.new(0, 75, 0, 30)
 caixaVelocidade.Position = UDim2.new(0, 10, 0, 35)
 caixaVelocidade.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 caixaVelocidade.BorderSizePixel = 0
-caixaVelocidade.Text = "255" -- Configurado com o seu valor ideal automaticamente!
+caixaVelocidade.Text = "255"
 caixaVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
 caixaVelocidade.Font = Enum.Font.SourceSans
 caixaVelocidade.TextSize = 16
@@ -117,7 +117,7 @@ botaoMinimizar.MouseButton1Click:Connect(function()
 	end
 end)
 
--- 🛡️ SISTEMA CALIBRADO PARA FORÇA BRUTA (250+)
+-- SISTEMA DE FORÇA FISICA (250-260)
 local velocidadeAlvo = 16
 
 botaoVelocidade.MouseButton1Click:Connect(function()
@@ -135,7 +135,6 @@ botaoVelocidade.MouseButton1Click:Connect(function()
 	end
 end)
 
--- LOOP ADAPTADO DE POST-SIMULATION PARA EVITAR O TELEPORTE DO ROBLOX
 RunService.PostSimulation:Connect(function()
 	local personagem = jogador.Character
 	if personagem then
@@ -143,13 +142,10 @@ RunService.PostSimulation:Connect(function()
 		local rootPart = personagem:FindFirstChild("HumanoidRootPart")
 		
 		if humanoid and rootPart then
-			-- Força WalkSpeed nativo baixo para o anti-cheat do jogo ler valores menores e não puxar
 			humanoid.WalkSpeed = math.clamp(velocidadeAlvo, 16, 32)
 			
-			-- Se estiver se movendo, injeta a velocidade monstruosa direto no vetor de física linear
 			if humanoid.MoveDirection.Magnitude > 0 and velocidadeAlvo > 32 then
 				local direcao = humanoid.MoveDirection
-				-- Aplica o valor real (Ex: 250 ou 260) diretamente nos eixos X e Z, travando o Y para não bugar no chão
 				rootPart.AssemblyLinearVelocity = Vector3.new(
 					direcao.X * velocidadeAlvo,
 					rootPart.AssemblyLinearVelocity.Y, 
@@ -160,35 +156,30 @@ RunService.PostSimulation:Connect(function()
 	end
 end)
 
-if jogador.Character then
-	local hum = jogador.Character:FindFirstChildOfClass("Humanoid")
-	if hum then travarHumanoid(hum) end
-end
-
--- ARRASTAR MOBILE / TOUCH
-local arrastando, inputArrastar, inicioArrastar, posicaoInicial
-local function atualizarPosicao(input)
-	local diferenca = input.Position - inicioArrastar
-	frame.Position = UDim2.new(posicaoInicial.X.Scale, posicaoInicial.X.Offset + diferenca.X, posicaoInicial.Y.Scale, posicaoInicial.Y.Offset + diferenca.Y)
+-- 📱 NOVO SISTEMA CORRIGIDO PARA ARRASTAR A ABA EM QUALQUER CELULAR
+local dragToggle, dragStart, startPos
+local function updateInput(input)
+	local delta = input.Position - dragStart
+	-- Move de forma livre e suave pelos eixos X e Y para qualquer lado
+	frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 end
 
 frame.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		arrastando = true
-		inicioArrastar = input.Position
-		posicaoInicial = frame.Position
+	if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+		dragToggle = true
+		dragStart = input.Position
+		startPos = frame.Position
+		
 		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then arrastando = false end
+			if input.UserInputState == Enum.UserInputState.End then
+				dragToggle = false
+			end
 		end)
 	end
 end)
 
-frame.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-		inputArrastar = input
-	end
-end)
-
 UserInputService.InputChanged:Connect(function(input)
-	if input == inputArrastar and arrastando then atualizarPosicao(input) end
+	if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragToggle then
+		updateInput(input)
+	end
 end)
