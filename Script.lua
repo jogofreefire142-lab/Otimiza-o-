@@ -1,4 +1,4 @@
--- ESPERA O JOGO CARREGAR TOTALMENTE PARA EVITAR ERROS
+-- ESPERA O JOGO CARREGAR TOTALMENTE PARA EVITAR ERROS DE INJEÇÃO
 if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
@@ -7,23 +7,25 @@ end
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
 
 local jogador = Players.LocalPlayer
+local PlayerGui = jogador:WaitForChild("PlayerGui", 15)
 
 -- INSTÂNCIA ANTICRASH DA INTERFACE
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PainelVelocidadeEstavel"
+screenGui.Name = "PainelMobileInfinito"
 screenGui.ResetOnSpawn = false
 
--- Filtro de compatibilidade para injetar sem dar erro nos executores
+-- Filtro de compatibilidade para injetar sem dar erro nos executores de celular
 local pcallSucesso = pcall(function()
 	screenGui.Parent = CoreGui
 end)
 if not pcallSucesso or not screenGui.Parent then
-	screenGui.Parent = jogador:WaitForChild("PlayerGui", 15)
+	screenGui.Parent = PlayerGui
 end
 
--- Janela Principal (Totalmente Arrastável)
+-- Janela Principal (Desenhada para o Touch do Celular)
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
 frame.Position = UDim2.new(0.1, 0, 0.4, 0)
@@ -46,18 +48,18 @@ local linhaCorner = Instance.new("UICorner")
 linhaCorner.CornerRadius = UDim.new(0, 8)
 linhaCorner.Parent = linhaCima
 
--- Título
+-- Título (Área do Toque para arrastar)
 local titulo = Instance.new("TextLabel")
 titulo.Size = UDim2.new(1, 0, 0, 25)
 titulo.Position = UDim2.new(0, 0, 0, 3)
 titulo.BackgroundTransparency = 1
-titulo.Text = "⚡ SPEED ESTÁVEL"
+titulo.Text = "⚡ SPEED PRO MOBILE"
 titulo.TextColor3 = Color3.fromRGB(255, 255, 255)
 titulo.Font = Enum.Font.SourceSansBold
 titulo.TextSize = 12
 titulo.Parent = frame
 
--- Campo de Texto (Configuração manual salva entre 250 e 260)
+-- Campo de Texto (Configuração manual salva em 255)
 local caixaVelocidade = Instance.new("TextBox")
 caixaVelocidade.Size = UDim2.new(0, 75, 0, 30)
 caixaVelocidade.Position = UDim2.new(0, 10, 0, 35)
@@ -90,26 +92,25 @@ local botaoCorner = Instance.new("UICorner")
 botaoCorner.CornerRadius = UDim.new(0, 5)
 botaoCorner.Parent = botaoVelocidade
 
--- ⚙️ LÓGICA DE VELOCIDADE COMPATÍVEL E LEVE (Sem loops pesados)
+-- ⚙️ LÓGICA DE VELOCIDADE COMPATÍVEL E ULTRA-LEVE (Com Freio)
 local velocidadeAlvo = 16
 local conexaoMudanca = nil
 
 local function travarHumanoid(humanoid)
 	if conexaoMudanca then conexaoMudanca:Disconnect() end
-	humanoid.WalkSpeed = velocidadeAlvo
+	humanoid.WalkSpeed = math.clamp(velocidadeAlvo, 16, 32)
 	
 	conexaoMudanca = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-		if humanoid.WalkSpeed ~= velocidadeAlvo then
-			humanoid.WalkSpeed = velocidadeAlvo
+		if humanoid.WalkSpeed ~= math.clamp(velocidadeAlvo, 16, 32) then
+			humanoid.WalkSpeed = math.clamp(velocidadeAlvo, 16, 32)
 		end
 	end)
 end
 
--- Pequena travada (delay seguro) ao renascer para garantir compatibilidade em tudo
 jogador.CharacterAdded:Connect(function(personagem)
 	local humanoid = personagem:WaitForChild("Humanoid", 10)
 	if humanoid then
-		task.wait(0.3) -- A leve travada necessária para carregar sem bugs
+		task.wait(0.3)
 		travarHumanoid(humanoid)
 	end
 end)
@@ -134,28 +135,51 @@ botaoVelocidade.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- SISTEMA DE MOVIMENTAÇÃO COM FREIO SECO (Para velocidades brutas de 250-260)
+RunService.PostSimulation:Connect(function()
+	local personagem = jogador.Character
+	if personagem then
+		local humanoid = personagem:FindFirstChildOfClass("Humanoid")
+		local rootPart = personagem:FindFirstChild("HumanoidRootPart")
+		
+		if humanoid and rootPart and velocidadeAlvo > 32 then
+			if humanoid.MoveDirection.Magnitude > 0 then
+				local direcao = humanoid.MoveDirection
+				rootPart.AssemblyLinearVelocity = Vector3.new(
+					direcao.X * velocidadeAlvo,
+					rootPart.AssemblyLinearVelocity.Y, 
+					direcao.Z * velocidadeAlvo
+				)
+			else
+				-- Freia na hora sem deixar patinar com o ovo grande
+				rootPart.AssemblyLinearVelocity = Vector3.new(0, rootPart.AssemblyLinearVelocity.Y, 0)
+			end
+		end
+	end
+end)
+
 if jogador.Character then
 	local hum = jogador.Character:FindFirstChildOfClass("Humanoid")
 	if hum then travarHumanoid(hum) end
 end
 
--- 📱 SISTEMA DE ARRASTO RECONSTRUTOR (Arrasta livre para qualquer lado)
+-- 📱 SISTEMA DE ARRASTO INTELIGENTE COMPATÍVEL COM TOQUE EM CELULAR
 local arrastando = false
-local cliqueInicial = Vector2.new(0, 0)
+local toqueInicial = Vector2.new(0, 0)
 local posicaoInicial = frame.Position
 
-frame.InputBegan:Connect(function(input)
+titulo.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		arrastando = true
-		cliqueInicial = Vector2.new(input.Position.X, input.Position.Y)
+		toqueInicial = Vector2.new(input.Position.X, input.Position.Y)
 		posicaoInicial = frame.Position
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
 	if arrastando and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-		local diferencaX = input.Position.X - cliqueInicial.X
-		local diferencaY = input.Position.Y - cliqueInicial.Y
+		local diferencaX = input.Position.X - toqueInicial.X
+		local diferencaY = input.Position.Y - toqueInicial.Y
 		
 		frame.Position = UDim2.new(
 			posicaoInicial.X.Scale, 
