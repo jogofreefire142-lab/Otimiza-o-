@@ -1,17 +1,13 @@
--- =======================================================================================
--- ⚡ SCRIPT AUTOMÁTICO DE VELOCIDADE HYPER v2026 - PARTE 1 DE 2
--- =======================================================================================
-
 if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
+
 task.wait(0.3)
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
-local LogService = game:GetService("LogService")
 
 local jogador = Players.LocalPlayer
 local PlayerGui = jogador:WaitForChild("PlayerGui", 30)
@@ -22,10 +18,6 @@ local rootPartAtual = personagemAtual and personagemAtual:FindFirstChild("Humano
 
 local velocidadeAlvo = 255
 local conexaoMudanca = nil
-
--- =======================================================
--- 🛠️ GERENCIAMENTO DO HUMANOID
--- =======================================================
 
 local function gerenciarHumanoid(humanoid)
 	if conexaoMudanca then
@@ -46,67 +38,10 @@ local function gerenciarHumanoid(humanoid)
 	end)
 end
 
--- =======================================================
--- 🛡️ BLOCO DE TESTE/PROTEÇÃO
--- =======================================================
-
-local pcallAntiBan = pcall(function()
-	LogService.MessageReceived:Connect(function(mensagem, tipoMensagem)
-		local texto = string.lower(tostring(mensagem))
-
-		if string.find(texto, "speed")
-			or string.find(texto, "walkspeed")
-			or string.find(texto, "velocity") then
-			return
-		end
-	end)
-
-	local clonarMetatabela = getrawmetatable or (debug and debug.getmetatable)
-
-	if clonarMetatabela and setreadonly and newcclosure then
-		local metatabela = clonarMetatabela(game)
-
-		if metatabela then
-			setreadonly(metatabela, false)
-
-			local indexAntigo = metatabela.__index
-
-			if indexAntigo then
-				metatabela.__index = newcclosure(function(tabela, propriedade)
-					local sucessoNome, nomeObjeto = pcall(function()
-						return tostring(tabela)
-					end)
-
-					if sucessoNome
-						and nomeObjeto == "Humanoid"
-						and propriedade == "WalkSpeed" then
-						return velocidadeAlvo
-					end
-
-					return indexAntigo(tabela, propriedade)
-				end)
-			end
-
-			setreadonly(metatabela, true)
-		end
-	end
-end)
-
--- =======================================================
--- 🎨 INTERFACE
--- =======================================================
-
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PainelVelocidadeDefinitivo2026"
 screenGui.ResetOnSpawn = false
-
-local pcallInterface = pcall(function()
-	screenGui.Parent = CoreGui
-end)
-
-if not pcallInterface or not screenGui.Parent then
-	screenGui.Parent = PlayerGui
-end
+screenGui.Parent = PlayerGui
 
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
@@ -134,7 +69,7 @@ local titulo = Instance.new("TextLabel")
 titulo.Size = UDim2.new(1, 0, 0, 25)
 titulo.Position = UDim2.new(0, 0, 0, 3)
 titulo.BackgroundTransparency = 1
-titulo.Text = "⚡ SPEED ULTRA v2026"
+titulo.Text = "SPEED"
 titulo.TextColor3 = Color3.fromRGB(255, 255, 255)
 titulo.Font = Enum.Font.SourceSansBold
 titulo.TextSize = 12
@@ -145,7 +80,7 @@ caixaVelocidade.Size = UDim2.new(0, 75, 0, 30)
 caixaVelocidade.Position = UDim2.new(0, 10, 0, 35)
 caixaVelocidade.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 caixaVelocidade.BorderSizePixel = 0
-caixaVelocidade.Text = tostring(velocidadeAlvo)
+caixaVelocidade.Text = "255"
 caixaVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
 caixaVelocidade.Font = Enum.Font.SourceSans
 caixaVelocidade.TextSize = 16
@@ -161,7 +96,7 @@ botaoVelocidade.Size = UDim2.new(0, 80, 0, 30)
 botaoVelocidade.Position = UDim2.new(0, 90, 0, 35)
 botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
 botaoVelocidade.BorderSizePixel = 0
-botaoVelocidade.Text = "TRAVAR VEL."
+botaoVelocidade.Text = "APLICAR"
 botaoVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
 botaoVelocidade.Font = Enum.Font.SourceSansBold
 botaoVelocidade.TextSize = 12
@@ -171,22 +106,18 @@ local botaoCorner = Instance.new("UICorner")
 botaoCorner.CornerRadius = UDim.new(0, 5)
 botaoCorner.Parent = botaoVelocidade
 
--- =======================================================
--- ⚡ BOTÃO DE VELOCIDADE
--- =======================================================
-
 botaoVelocidade.Activated:Connect(function()
 	local num = tonumber(caixaVelocidade.Text)
 
 	if num then
-		velocidadeAlvo = num
-
-		botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		botaoVelocidade.TextColor3 = Color3.fromRGB(0, 0, 0)
+		velocidadeAlvo = math.clamp(num, 0, 1000)
 
 		if humanoideAtual then
 			gerenciarHumanoid(humanoideAtual)
 		end
+
+		botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		botaoVelocidade.TextColor3 = Color3.fromRGB(0, 0, 0)
 
 		task.wait(0.08)
 
@@ -199,13 +130,8 @@ botaoVelocidade.Activated:Connect(function()
 	end
 end)
 
--- =======================================================
--- 🔄 RESPAWN
--- =======================================================
-
 jogador.CharacterAdded:Connect(function(novoPersonagem)
 	personagemAtual = novoPersonagem
-
 	humanoideAtual = novoPersonagem:WaitForChild("Humanoid", 15)
 	rootPartAtual = novoPersonagem:WaitForChild("HumanoidRootPart", 15)
 
@@ -216,58 +142,16 @@ jogador.CharacterAdded:Connect(function(novoPersonagem)
 	end
 end)
 
--- =======================================================
--- 🚀 INICIALIZAÇÃO
--- =======================================================
-
 if humanoideAtual then
 	gerenciarHumanoid(humanoideAtual)
 end
-
--- =======================================================
--- 🔥 MOTOR DE MOVIMENTAÇÃO
--- =======================================================
 
 RunService.PostSimulation:Connect(function()
 	local char = personagemAtual or jogador.Character
 	local hum = humanoideAtual or (char and char:FindFirstChildOfClass("Humanoid"))
 	local root = rootPartAtual or (char and char:FindFirstChild("HumanoidRootPart"))
 
-	if not char or not hum or not root then
-		return
-	end
-
-	if velocidadeAlvo > 16 and root:IsA("BasePart") then
-
-		-- Mantém a otimização original dos objetos carregados
-		for _, objeto in ipairs(char:GetChildren()) do
-			if objeto:IsA("Tool")
-				or objeto.Name:find("Ovo")
-				or objeto.Name:find("Egg") then
-
-				for _, peca in ipairs(objeto:GetDescendants()) do
-					if peca:IsA("BasePart") and not peca.Massless then
-						peca.Massless = true
-
-						local sucesso = pcall(function()
-							peca.CustomPhysicalProperties = PhysicalProperties.new(
-								0.0001,
-								0,
-								0,
-								0,
-								0
-							)
-						end)
-
-						if not sucesso then
-							-- Mantém o restante do motor funcionando
-						end
-					end
-				end
-			end
-		end
-
-		-- Movimento pela direção do Humanoid
+	if char and hum and root and root:IsA("BasePart") and velocidadeAlvo > 16 then
 		if hum.MoveDirection.Magnitude > 0 then
 			local direcao = hum.MoveDirection
 			local velocidadeVertical = root.AssemblyLinearVelocity.Y
@@ -281,10 +165,6 @@ RunService.PostSimulation:Connect(function()
 	end
 end)
 
--- =======================================================
--- 📱 ARRASTO MOBILE
--- =======================================================
-
 local arrastando = false
 local toqueInicial = Vector2.new(0, 0)
 local posicaoInicial = frame.Position
@@ -294,22 +174,17 @@ titulo.InputBegan:Connect(function(input)
 		or input.UserInputType == Enum.UserInputType.Touch then
 
 		arrastando = true
-		toqueInicial = Vector2.new(
-			input.Position.X,
-			input.Position.Y
-		)
-
+		toqueInicial = Vector2.new(input.Position.X, input.Position.Y)
 		posicaoInicial = frame.Position
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if not arrastando then
-		return
-	end
-
-	if input.UserInputType == Enum.UserInputType.MouseMovement
-		or input.UserInputType == Enum.UserInputType.Touch then
+	if arrastando
+		and (
+			input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch
+		) then
 
 		local diferencaX = input.Position.X - toqueInicial.X
 		local diferencaY = input.Position.Y - toqueInicial.Y
