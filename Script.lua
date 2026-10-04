@@ -1,25 +1,32 @@
--- ESPERA O JOGO CARREGAR TOTALMENTE
+-- ESPERA O JOGO CARREGAR TOTALMENTE PARA EVITAR ERROS
 if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
 
 -- SERVIÇOS UNIVERSAIS DO ROBLOX
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
 
 local jogador = Players.LocalPlayer
-local PlayerGui = jogador:WaitForChild("PlayerGui", 20)
 
--- INSTÂNCIA UNIVERSAL DA INTERFACE
+-- INSTÂNCIA ANTICRASH DA INTERFACE
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PainelVelocidadePosicaoFix"
+screenGui.Name = "PainelVelocidadeEstavel"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = PlayerGui
 
--- Janela Principal (Começa no Canto Esquerdo)
+-- Filtro de compatibilidade para injetar sem dar erro nos executores
+local pcallSucesso = pcall(function()
+	screenGui.Parent = CoreGui
+end)
+if not pcallSucesso or not screenGui.Parent then
+	screenGui.Parent = jogador:WaitForChild("PlayerGui", 15)
+end
+
+-- Janela Principal (Totalmente Arrastável)
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
-frame.Position = UDim2.new(0.05, 0, 0.35, 0) -- Posição 1
+frame.Position = UDim2.new(0.1, 0, 0.4, 0)
 frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 frame.BorderSizePixel = 0
 frame.Active = true
@@ -41,22 +48,22 @@ linhaCorner.Parent = linhaCima
 
 -- Título
 local titulo = Instance.new("TextLabel")
-titulo.Size = UDim2.new(1, -30, 0, 25)
-titulo.Position = UDim2.new(0, 5, 0, 3)
+titulo.Size = UDim2.new(1, 0, 0, 25)
+titulo.Position = UDim2.new(0, 0, 0, 3)
 titulo.BackgroundTransparency = 1
-titulo.Text = "⚡ SPEED HYPER v12"
+titulo.Text = "⚡ SPEED ESTÁVEL"
 titulo.TextColor3 = Color3.fromRGB(255, 255, 255)
 titulo.Font = Enum.Font.SourceSansBold
-titulo.TextSize = 11
+titulo.TextSize = 12
 titulo.Parent = frame
 
--- Campo de Texto (Configurado direto no seu valor ideal manual)
+-- Campo de Texto (Configuração manual salva entre 250 e 260)
 local caixaVelocidade = Instance.new("TextBox")
 caixaVelocidade.Size = UDim2.new(0, 75, 0, 30)
 caixaVelocidade.Position = UDim2.new(0, 10, 0, 35)
 caixaVelocidade.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 caixaVelocidade.BorderSizePixel = 0
-caixaVelocidade.Text = "255" -- Valor salvo na memória para carregar os itens
+caixaVelocidade.Text = "255"
 caixaVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
 caixaVelocidade.Font = Enum.Font.SourceSans
 caixaVelocidade.TextSize = 16
@@ -83,47 +90,39 @@ local botaoCorner = Instance.new("UICorner")
 botaoCorner.CornerRadius = UDim.new(0, 5)
 botaoCorner.Parent = botaoVelocidade
 
--- 📱 BOTÃO DE MOVER A ABA DE LUGAR AUTOMATICAMENTE (Substitui o arrastar que bugava)
-local botaoMover = Instance.new("TextButton")
-botaoMover.Size = UDim2.new(0, 18, 0, 18)
-botaoMover.Position = UDim2.new(1, -23, 0, 5)
-botaoMover.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-botaoMover.Text = "M"
-botaoMoverMoverTextColor3 = Color3.fromRGB(255, 255, 255)
-botaoMover.Font = Enum.Font.SourceSansBold
-botaoMover.TextSize = 11
-botaoMover.Parent = frame
-
-local moverCorner = Instance.new("UICorner")
-moverCorner.CornerRadius = UDim.new(1, 0)
-moverCorner.Parent = botaoMover
-
--- Tabela com as posições ideais da tela para não tampar os controles do celular
-local posicoes = {
-	UDim2.new(0.05, 0, 0.35, 0), -- 1: Esquerda Centro
-	UDim2.new(1, -195, 0.15, 0), -- 2: Direita Superior
-	UDim2.new(1, -195, 0.65, 0), -- 3: Direita Inferior
-	UDim2.new(0.05, 0, 0.15, 0)  -- 4: Esquerda Superior
-}
-local posicaoAtual = 1
-
-botaoMover.MouseButton1Click:Connect(function()
-	posicaoAtual = posicaoAtual + 1
-	if posicaoAtual > #posicoes then
-		posicaoAtual = 1
-	end
-	frame.Position = posicoes[posicaoAtual] -- Faz a janela pular pro canto certo na hora
-end)
-
--- =======================================================
--- 🔥 MOVIMENTAÇÃO FISICA E SISTEMA DE FREIO ANTIDESLIZE
--- =======================================================
+-- ⚙️ LÓGICA DE VELOCIDADE COMPATÍVEL E LEVE (Sem loops pesados)
 local velocidadeAlvo = 16
+local conexaoMudanca = nil
+
+local function travarHumanoid(humanoid)
+	if conexaoMudanca then conexaoMudanca:Disconnect() end
+	humanoid.WalkSpeed = velocidadeAlvo
+	
+	conexaoMudanca = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+		if humanoid.WalkSpeed ~= velocidadeAlvo then
+			humanoid.WalkSpeed = velocidadeAlvo
+		end
+	end)
+end
+
+-- Pequena travada (delay seguro) ao renascer para garantir compatibilidade em tudo
+jogador.CharacterAdded:Connect(function(personagem)
+	local humanoid = personagem:WaitForChild("Humanoid", 10)
+	if humanoid then
+		task.wait(0.3) -- A leve travada necessária para carregar sem bugs
+		travarHumanoid(humanoid)
+	end
+end)
 
 botaoVelocidade.MouseButton1Click:Connect(function()
 	local num = tonumber(caixaVelocidade.Text)
 	if num then
 		velocidadeAlvo = num
+		local personagem = jogador.Character
+		if personagem then
+			local humanoid = personagem:FindFirstChildOfClass("Humanoid")
+			if humanoid then travarHumanoid(humanoid) end
+		end
 		
 		botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 		botaoVelocidade.TextColor3 = Color3.fromRGB(0, 0, 0)
@@ -135,27 +134,40 @@ botaoVelocidade.MouseButton1Click:Connect(function()
 	end
 end)
 
-RunService.PostSimulation:Connect(function()
-	local personagem = jogador.Character
-	if personagem then
-		local humanoid = personagem:FindFirstChildOfClass("Humanoid")
-		local rootPart = personagem:FindFirstChild("HumanoidRootPart")
+if jogador.Character then
+	local hum = jogador.Character:FindFirstChildOfClass("Humanoid")
+	if hum then travarHumanoid(hum) end
+end
+
+-- 📱 SISTEMA DE ARRASTO RECONSTRUTOR (Arrasta livre para qualquer lado)
+local arrastando = false
+local cliqueInicial = Vector2.new(0, 0)
+local posicaoInicial = frame.Position
+
+frame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		arrastando = true
+		cliqueInicial = Vector2.new(input.Position.X, input.Position.Y)
+		posicaoInicial = frame.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if arrastando and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local diferencaX = input.Position.X - cliqueInicial.X
+		local diferencaY = input.Position.Y - cliqueInicial.Y
 		
-		if humanoid and rootPart then
-			humanoid.WalkSpeed = math.clamp(velocidadeAlvo, 16, 32)
-			
-			if velocidadeAlvo > 32 then
-				if humanoid.MoveDirection.Magnitude > 0 then
-					local direcao = humanoid.MoveDirection
-					rootPart.AssemblyLinearVelocity = Vector3.new(
-						direcao.X * velocidadeAlvo,
-						rootPart.AssemblyLinearVelocity.Y, 
-						direcao.Z * velocidadeAlvo
-					)
-				else
-					rootPart.AssemblyLinearVelocity = Vector3.new(0, rootPart.AssemblyLinearVelocity.Y, 0)
-				end
-			end
-		end
+		frame.Position = UDim2.new(
+			posicaoInicial.X.Scale, 
+			posicaoInicial.X.Offset + diferencaX, 
+			posicaoInicial.Y.Scale, 
+			posicaoInicial.Y.Offset + diferencaY
+		)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		arrastando = false
 	end
 end)
