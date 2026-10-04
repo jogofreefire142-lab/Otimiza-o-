@@ -13,14 +13,14 @@ local PlayerGui = jogador:WaitForChild("PlayerGui", 20)
 
 -- INSTÂNCIA UNIVERSAL DA INTERFACE
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PainelVelocidadeFinalFix"
+screenGui.Name = "PainelVelocidadeAbaLivre"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = PlayerGui
 
 -- Janela Principal
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
-frame.Position = UDim2.new(0.05, 0, 0.4, 0) -- Esquerda por padrão
+frame.Position = UDim2.new(0.05, 0, 0.4, 0)
 frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 frame.BorderSizePixel = 0
 frame.Active = true
@@ -40,15 +40,15 @@ local linhaCorner = Instance.new("UICorner")
 linhaCorner.CornerRadius = UDim.new(0, 8)
 linhaCorner.Parent = linhaCima
 
--- Título
+-- Título (Será a barra para puxar o menu)
 local titulo = Instance.new("TextLabel")
-titulo.Size = UDim2.new(1, -50, 0, 25)
-titulo.Position = UDim2.new(0, 5, 0, 3)
+titulo.Size = UDim2.new(1, 0, 0, 25)
+titulo.Position = UDim2.new(0, 0, 0, 3)
 titulo.BackgroundTransparency = 1
-titulo.Text = "⚡ SPEED HYPER v10"
+titulo.Text = "⚡ SPEED HYPER v11"
 titulo.TextColor3 = Color3.fromRGB(255, 255, 255)
 titulo.Font = Enum.Font.SourceSansBold
-titulo.TextSize = 11
+titulo.TextSize = 12
 titulo.Parent = frame
 
 -- Campo de Texto
@@ -84,39 +84,47 @@ local botaoCorner = Instance.new("UICorner")
 botaoCorner.CornerRadius = UDim.new(0, 5)
 botaoCorner.Parent = botaoVelocidade
 
--- BOTÕES DE MUDAR A ABA DE LADO (Perfeitos para celular)
-local botaoMoverEsquerda = Instance.new("TextButton")
-local botaoMoverDireita = Instance.new("TextButton")
+-- =======================================================
+-- 📱 SISTEMA DE ARRASTO INTELIGENTE FORÇADO PARA MOBILE
+-- =======================================================
+local arrastando = false
+local cliqueInicial = Vector2.new(0, 0)
+local posicaoInicial = frame.Position
 
-botaoMoverEsquerda.Size = UDim2.new(0, 16, 0, 16)
-botaoMoverEsquerda.Position = UDim2.new(1, -42, 0, 6)
-botaoMoverEsquerda.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-botaoMoverEsquerda.Text = "<"
-botaoMoverEsquerda.TextColor3 = Color3.fromRGB(255, 255, 255)
-botaoMoverEsquerda.Font = Enum.Font.SourceSansBold
-botaoMoverEsquerda.TextSize = 11
-botaoMoverEsquerda.Parent = frame
-local esqCorner = Instance.new("UICorner") esqCorner.CornerRadius = UDim.new(0, 4) esqCorner.Parent = botaoMoverEsquerda
-
-botaoMoverDireita.Size = UDim2.new(0, 16, 0, 16)
-botaoMoverDireita.Position = UDim2.new(1, -24, 0, 6)
-botaoMoverDireita.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-botaoMoverDireita.Text = ">"
-botaoMoverDireita.TextColor3 = Color3.fromRGB(255, 255, 255)
-botaoMoverDireita.Font = Enum.Font.SourceSansBold
-botaoMoverDireita.TextSize = 11
-botaoMoverDireita.Parent = frame
-local dirCorner = Instance.new("UICorner") dirCorner.CornerRadius = UDim.new(0, 4) dirCorner.Parent = botaoMoverDireita
-
-botaoMoverEsquerda.MouseButton1Click:Connect(function()
-	frame.Position = UDim2.new(0.05, 0, 0.4, 0)
+-- Detecta quando bota o dedo no título do menu
+titulo.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		arrastando = true
+		cliqueInicial = Vector2.new(input.Position.X, input.Position.Y)
+		posicaoInicial = frame.Position
+	end
 end)
 
-botaoMoverDireita.MouseButton1Click:Connect(function()
-	frame.Position = UDim2.new(1, -195, 0.4, 0)
+-- Move para qualquer lugar baseado no movimento real do touch screen
+UserInputService.InputChanged:Connect(function(input)
+	if arrastando and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local diferencaX = input.Position.X - cliqueInicial.X
+		local diferencaY = input.Position.Y - cliqueInicial.Y
+		
+		frame.Position = UDim2.new(
+			posicaoInicial.X.Scale, 
+			posicaoInicial.X.Offset + diferencaX, 
+			posicaoInicial.Y.Scale, 
+			posicaoInicial.Y.Offset + diferencaY
+		)
+	end
 end)
 
--- LOGICA DE COMPORTAMENTO DA VELOCIDADE
+-- Detecta quando solta o dedo
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		arrastando = false
+	end
+end)
+
+-- =======================================================
+-- 🔥 MOVIMENTAÇÃO FISICA E SISTEMA DE FREIO ANTIDESLIZE
+-- =======================================================
 local velocidadeAlvo = 16
 
 botaoVelocidade.MouseButton1Click:Connect(function()
@@ -134,7 +142,6 @@ botaoVelocidade.MouseButton1Click:Connect(function()
 	end
 end)
 
--- 🔥 SISTEMA DE MOVIMENTAÇÃO COM FREIO INSTANTÂNEO ANTIDESLIZE
 RunService.PostSimulation:Connect(function()
 	local personagem = jogador.Character
 	if personagem then
@@ -146,7 +153,6 @@ RunService.PostSimulation:Connect(function()
 			
 			if velocidadeAlvo > 32 then
 				if humanoid.MoveDirection.Magnitude > 0 then
-					-- EMPURRÃO ATIVO: Jogador está correndo
 					local direcao = humanoid.MoveDirection
 					rootPart.AssemblyLinearVelocity = Vector3.new(
 						direcao.X * velocidadeAlvo,
@@ -154,7 +160,7 @@ RunService.PostSimulation:Connect(function()
 						direcao.Z * velocidadeAlvo
 					)
 				else
-					-- FREIO ATIVADO: Jogador soltou o analógico, zera a força X e Z na hora para não deslizar
+					-- Freio seco imediato ao soltar o analógico
 					rootPart.AssemblyLinearVelocity = Vector3.new(0, rootPart.AssemblyLinearVelocity.Y, 0)
 				end
 			end
