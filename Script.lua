@@ -1,12 +1,5 @@
--- =====================================================================================
--- ⚡ SPEED ULTRA v2026 — v2.1
--- Correção de estabilidade + respawn + execução duplicada
--- PRINCIPAL: controle de velocidade
--- Padrão: 255
--- =====================================================================================
-
 if not game:IsLoaded() then
-    game.Loaded:Wait()
+	game.Loaded:Wait()
 end
 
 task.wait(0.3)
@@ -18,64 +11,14 @@ local RunService = game:GetService("RunService")
 local jogador = Players.LocalPlayer
 local PlayerGui = jogador:WaitForChild("PlayerGui", 30)
 
-if not PlayerGui then
-    return
-end
-
--- =====================================================================================
--- ♻️ LIMPEZA DA EXECUÇÃO ANTERIOR
--- =====================================================================================
-
-local function obterAmbienteGlobal()
-    local ok, env = pcall(function()
-        return getgenv()
-    end)
-
-    if ok and type(env) == "table" then
-        return env
-    end
-
-    return _G
-end
-
-local ambienteGlobal = obterAmbienteGlobal()
-
-if type(ambienteGlobal.RipLoderSpeedUltraCleanup) == "function" then
-    pcall(ambienteGlobal.RipLoderSpeedUltraCleanup)
-end
-
--- =====================================================================================
--- 🎯 ESTADO
--- =====================================================================================
-
 local personagemAtual
 local humanoideAtual
 local rootPartAtual
 
 local velocidadeAlvo = 255
-
 local conexaoWalkSpeed
 local conexaoDescendente
 local conexaoMovimento
-local conexaoCharacterAdded
-local conexaoTituloInputBegan
-local conexaoInputChanged
-local conexaoInputEnded
-
-local ativo = true
-local arrastando = false
-local toqueAtual
-local toqueInicial = Vector2.zero
-local posicaoInicial = UDim2.new(0.05, 0, 0.4, 0)
-
--- =====================================================================================
--- 🖥️ INTERFACE
--- =====================================================================================
-
-local antigaGui = PlayerGui:FindFirstChild("PainelVelocidadeDefinitivo2026")
-if antigaGui then
-    antigaGui:Destroy()
-end
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PainelVelocidadeDefinitivo2026"
@@ -85,7 +28,7 @@ screenGui.Parent = PlayerGui
 
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
-frame.Position = posicaoInicial
+frame.Position = UDim2.new(0.05, 0, 0.4, 0)
 frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 frame.BorderSizePixel = 0
 frame.Active = true
@@ -146,320 +89,222 @@ local botaoCorner = Instance.new("UICorner")
 botaoCorner.CornerRadius = UDim.new(0, 5)
 botaoCorner.Parent = botaoVelocidade
 
--- =====================================================================================
--- 🧹 LIMPEZA DE CONEXÕES
--- =====================================================================================
-
-local function desconectar(conexao)
-    if conexao then
-        pcall(function()
-            conexao:Disconnect()
-        end)
-    end
-end
-
-local function limparConexoesPersonagem()
-    desconectar(conexaoWalkSpeed)
-    conexaoWalkSpeed = nil
-
-    desconectar(conexaoDescendente)
-    conexaoDescendente = nil
-end
-
--- =====================================================================================
--- ⚙️ PARTE OPCIONAL DE OBJETOS LEVES
--- Mantida da base para não alterar o objetivo do projeto.
--- =====================================================================================
-
 local function tornarObjetoLeve(objeto)
-    if not objeto or not objeto.Parent then
-        return
-    end
+	if not objeto then
+		return
+	end
 
-    local nome = string.lower(objeto.Name)
+	local nome = string.lower(objeto.Name)
 
-    if not objeto:IsA("Tool")
-        and not string.find(nome, "ovo", 1, true)
-        and not string.find(nome, "egg", 1, true) then
-        return
-    end
+	if not objeto:IsA("Tool")
+		and not string.find(nome, "ovo")
+		and not string.find(nome, "egg") then
+		return
+	end
 
-    local function aplicar(peca)
-        if not peca:IsA("BasePart") then
-            return
-        end
+	if objeto:IsA("BasePart") then
+		objeto.Massless = true
 
-        pcall(function()
-            peca.Massless = true
-            peca.CustomPhysicalProperties = PhysicalProperties.new(
-                0.0001,
-                0,
-                0,
-                0,
-                0
-            )
-        end)
-    end
+		pcall(function()
+			objeto.CustomPhysicalProperties = PhysicalProperties.new(
+				0.0001,
+				0,
+				0,
+				0,
+				0
+			)
+		end)
+	end
 
-    aplicar(objeto)
+	for _, peca in ipairs(objeto:GetDescendants()) do
+		if peca:IsA("BasePart") then
+			peca.Massless = true
 
-    for _, peca in ipairs(objeto:GetDescendants()) do
-        aplicar(peca)
-    end
+			pcall(function()
+				peca.CustomPhysicalProperties = PhysicalProperties.new(
+					0.0001,
+					0,
+					0,
+					0,
+					0
+				)
+			end)
+		end
+	end
 end
 
--- =====================================================================================
--- 👤 PREPARAÇÃO DO PERSONAGEM
--- IMPORTANTE: NÃO desconecta o loop principal de velocidade.
--- =====================================================================================
+local function limparConexoes()
+	if conexaoWalkSpeed then
+		conexaoWalkSpeed:Disconnect()
+		conexaoWalkSpeed = nil
+	end
+
+	if conexaoDescendente then
+		conexaoDescendente:Disconnect()
+		conexaoDescendente = nil
+	end
+
+	if conexaoMovimento then
+		conexaoMovimento:Disconnect()
+		conexaoMovimento = nil
+	end
+end
 
 local function prepararPersonagem(personagem)
-    if not personagem then
-        return
-    end
+	limparConexoes()
 
-    limparConexoesPersonagem()
+	personagemAtual = personagem
 
-    personagemAtual = personagem
-    humanoideAtual = personagem:WaitForChild("Humanoid", 15)
-    rootPartAtual = personagem:WaitForChild("HumanoidRootPart", 15)
+	humanoideAtual = personagem:WaitForChild("Humanoid", 15)
+	rootPartAtual = personagem:WaitForChild("HumanoidRootPart", 15)
 
-    if personagemAtual ~= personagem then
-        return
-    end
+	for _, objeto in ipairs(personagem:GetChildren()) do
+		tornarObjetoLeve(objeto)
+	end
 
-    for _, objeto in ipairs(personagem:GetChildren()) do
-        tornarObjetoLeve(objeto)
-    end
+	conexaoDescendente = personagem.DescendantAdded:Connect(function(objeto)
+		tornarObjetoLeve(objeto)
+	end)
 
-    conexaoDescendente = personagem.DescendantAdded:Connect(function(objeto)
-        tornarObjetoLeve(objeto)
-    end)
+	if humanoideAtual then
+		humanoideAtual.WalkSpeed = velocidadeAlvo
 
-    if humanoideAtual then
-        humanoideAtual.WalkSpeed = velocidadeAlvo
-
-        conexaoWalkSpeed = humanoideAtual:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-            if not ativo then
-                return
-            end
-
-            if humanoideAtual
-                and humanoideAtual.Parent
-                and humanoideAtual.WalkSpeed ~= velocidadeAlvo then
-                humanoideAtual.WalkSpeed = velocidadeAlvo
-            end
-        end)
-    end
+		conexaoWalkSpeed = humanoideAtual:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+			if humanoideAtual
+				and humanoideAtual.Parent
+				and humanoideAtual.WalkSpeed ~= velocidadeAlvo then
+				humanoideAtual.WalkSpeed = velocidadeAlvo
+			end
+		end)
+	end
 end
 
--- =====================================================================================
--- ⚡ CONTROLE PRINCIPAL DE VELOCIDADE
--- Esta é a parte PRINCIPAL e foi preservada.
--- =====================================================================================
+botaoVelocidade.Activated:Connect(function()
+	local valor = tonumber(caixaVelocidade.Text)
 
-conexaoMovimento = RunService.PreSimulation:Connect(function(deltaTime)
-    if not ativo then
-        return
-    end
+	if valor
+		and valor == valor
+		and valor ~= math.huge
+		and valor ~= -math.huge then
 
-    local hum = humanoideAtual
-    local root = rootPartAtual
+		velocidadeAlvo = math.clamp(valor, 0, 1000)
+		caixaVelocidade.Text = tostring(velocidadeAlvo)
 
-    if not hum
-        or not root
-        or not hum.Parent
-        or not root.Parent
-        or hum.Health <= 0 then
-        return
-    end
+		if humanoideAtual and humanoideAtual.Parent then
+			humanoideAtual.WalkSpeed = velocidadeAlvo
+		end
 
-    -- Mantém WalkSpeed sincronizado.
-    if hum.WalkSpeed ~= velocidadeAlvo then
-        hum.WalkSpeed = velocidadeAlvo
-    end
+		botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		botaoVelocidade.TextColor3 = Color3.fromRGB(0, 0, 0)
 
-    local direcao = hum.MoveDirection
-    local dt = math.max(deltaTime, 0)
-
-    if direcao.Magnitude > 0 then
-        local direcaoUnit = direcao.Unit
-        local atual = root.AssemblyLinearVelocity
-        local alvoX = direcaoUnit.X * velocidadeAlvo
-        local alvoZ = direcaoUnit.Z * velocidadeAlvo
-
-        -- Suavização preservada da base.
-        local suavizacao = 1 - math.exp(-50 * dt)
-
-        root.AssemblyLinearVelocity = Vector3.new(
-            atual.X + (alvoX - atual.X) * suavizacao,
-            atual.Y,
-            atual.Z + (alvoZ - atual.Z) * suavizacao
-        )
-    else
-        local atual = root.AssemblyLinearVelocity
-        local suavizacaoParada = 1 - math.exp(-12 * dt)
-
-        root.AssemblyLinearVelocity = Vector3.new(
-            atual.X * (1 - suavizacaoParada),
-            atual.Y,
-            atual.Z * (1 - suavizacaoParada)
-        )
-    end
+		task.delay(0.08, function()
+			if botaoVelocidade and botaoVelocidade.Parent then
+				botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
+				botaoVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
+			end
+		end)
+	else
+		caixaVelocidade.Text = tostring(velocidadeAlvo)
+	end
 end)
 
--- =====================================================================================
--- 🎛️ BOTÃO DE VELOCIDADE
--- =====================================================================================
-
-local function atualizarVelocidade()
-    local valor = tonumber(caixaVelocidade.Text)
-
-    if not valor
-        or valor ~= valor
-        or valor == math.huge
-        or valor == -math.huge then
-        caixaVelocidade.Text = tostring(velocidadeAlvo)
-        return
-    end
-
-    velocidadeAlvo = math.clamp(valor, 0, 1000)
-    caixaVelocidade.Text = tostring(velocidadeAlvo)
-
-    if humanoideAtual and humanoideAtual.Parent then
-        humanoideAtual.WalkSpeed = velocidadeAlvo
-    end
-
-    botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    botaoVelocidade.TextColor3 = Color3.fromRGB(0, 0, 0)
-
-    task.delay(0.08, function()
-        if botaoVelocidade and botaoVelocidade.Parent then
-            botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
-            botaoVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
-        end
-    end)
-end
-
-botaoVelocidade.Activated:Connect(atualizarVelocidade)
-
--- =====================================================================================
--- 🔄 RESPAWN
--- =====================================================================================
-
-conexaoCharacterAdded = jogador.CharacterAdded:Connect(function(novoPersonagem)
-    task.wait(0.15)
-
-    if ativo then
-        prepararPersonagem(novoPersonagem)
-    end
+jogador.CharacterAdded:Connect(function(novoPersonagem)
+	task.wait(0.15)
+	prepararPersonagem(novoPersonagem)
 end)
 
 if jogador.Character then
-    prepararPersonagem(jogador.Character)
+	prepararPersonagem(jogador.Character)
 end
 
--- =====================================================================================
--- 📱 ARRASTAR PAINEL
--- Mantido simples e compatível com toque/mouse.
--- =====================================================================================
+local ultimaDirecao = Vector3.zero
 
-conexaoTituloInputBegan = titulo.InputBegan:Connect(function(input)
-    local tipo = input.UserInputType
+conexaoMovimento = RunService.PreSimulation:Connect(function(deltaTime)
+	local hum = humanoideAtual
+	local root = rootPartAtual
 
-    if tipo == Enum.UserInputType.Touch
-        or tipo == Enum.UserInputType.MouseButton1 then
+	if not hum
+		or not root
+		or not hum.Parent
+		or not root.Parent then
+		return
+	end
 
-        arrastando = true
-        toqueAtual = input
+	if hum.WalkSpeed ~= velocidadeAlvo then
+		hum.WalkSpeed = velocidadeAlvo
+	end
 
-        toqueInicial = Vector2.new(
-            input.Position.X,
-            input.Position.Y
-        )
+	local direcao = hum.MoveDirection
 
-        posicaoInicial = frame.Position
-    end
+	if direcao.Magnitude > 0 then
+		ultimaDirecao = direcao.Unit
+
+		local atual = root.AssemblyLinearVelocity
+		local alvoX = ultimaDirecao.X * velocidadeAlvo
+		local alvoZ = ultimaDirecao.Z * velocidadeAlvo
+
+		local suavizacao = 1 - math.exp(-50 * math.max(deltaTime, 0))
+
+		root.AssemblyLinearVelocity = Vector3.new(
+			atual.X + (alvoX - atual.X) * suavizacao,
+			atual.Y,
+			atual.Z + (alvoZ - atual.Z) * suavizacao
+		)
+	else
+		local atual = root.AssemblyLinearVelocity
+		local suavizacaoParada = 1 - math.exp(-12 * math.max(deltaTime, 0))
+
+		root.AssemblyLinearVelocity = Vector3.new(
+			atual.X + (0 - atual.X) * suavizacaoParada,
+			atual.Y,
+			atual.Z + (0 - atual.Z) * suavizacaoParada
+		)
+	end
 end)
 
-conexaoInputChanged = UserInputService.InputChanged:Connect(function(input)
-    if not arrastando then
-        return
-    end
+local arrastando = false
+local toqueInicial = Vector2.zero
+local posicaoInicial = frame.Position
 
-    local tipo = input.UserInputType
+titulo.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseButton1 then
 
-    if tipo == Enum.UserInputType.Touch
-        or tipo == Enum.UserInputType.MouseMovement then
+		arrastando = true
 
-        local diferencaX = input.Position.X - toqueInicial.X
-        local diferencaY = input.Position.Y - toqueInicial.Y
+		toqueInicial = Vector2.new(
+			input.Position.X,
+			input.Position.Y
+		)
 
-        frame.Position = UDim2.new(
-            posicaoInicial.X.Scale,
-            posicaoInicial.X.Offset + diferencaX,
-            posicaoInicial.Y.Scale,
-            posicaoInicial.Y.Offset + diferencaY
-        )
-    end
+		posicaoInicial = frame.Position
+	end
 end)
 
-conexaoInputEnded = UserInputService.InputEnded:Connect(function(input)
-    local tipo = input.UserInputType
+UserInputService.InputChanged:Connect(function(input)
+	if not arrastando then
+		return
+	end
 
-    if tipo == Enum.UserInputType.Touch
-        or tipo == Enum.UserInputType.MouseButton1 then
-        if toqueAtual == nil or input == toqueAtual then
-            arrastando = false
-            toqueAtual = nil
-        end
-    end
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseMovement then
+
+		local diferencaX = input.Position.X - toqueInicial.X
+		local diferencaY = input.Position.Y - toqueInicial.Y
+
+		frame.Position = UDim2.new(
+			posicaoInicial.X.Scale,
+			posicaoInicial.X.Offset + diferencaX,
+			posicaoInicial.Y.Scale,
+			posicaoInicial.Y.Offset + diferencaY
+		)
+	end
 end)
 
--- =====================================================================================
--- 🧹 CLEANUP GLOBAL
--- Permite uma nova execução sem deixar esta instância rodando.
--- =====================================================================================
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseButton1 then
 
-local function cleanup()
-    if not ativo then
-        return
-    end
-
-    ativo = false
-    arrastando = false
-    toqueAtual = nil
-
-    limparConexoesPersonagem()
-
-    desconectar(conexaoMovimento)
-    conexaoMovimento = nil
-
-    desconectar(conexaoCharacterAdded)
-    conexaoCharacterAdded = nil
-
-    desconectar(conexaoTituloInputBegan)
-    conexaoTituloInputBegan = nil
-
-    desconectar(conexaoInputChanged)
-    conexaoInputChanged = nil
-
-    desconectar(conexaoInputEnded)
-    conexaoInputEnded = nil
-
-    if screenGui then
-        pcall(function()
-            screenGui:Destroy()
-        end)
-    end
-
-    if ambienteGlobal.RipLoderSpeedUltraCleanup == cleanup then
-        ambienteGlobal.RipLoderSpeedUltraCleanup = nil
-    end
-end
-
-ambienteGlobal.RipLoderSpeedUltraCleanup = cleanup
-
--- =====================================================================================
--- ✅ FIM — v2.1
--- =====================================================================================
+		arrastando = false
+	end
+end)
