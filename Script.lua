@@ -6,13 +6,14 @@ end
 -- SERVIÇOS UNIVERSAIS DO ROBLOX
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local jogador = Players.LocalPlayer
 local PlayerGui = jogador:WaitForChild("PlayerGui", 20)
 
 -- INSTÂNCIA UNIVERSAL DA INTERFACE
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PainelVelocidadeSuperLeve"
+screenGui.Name = "PainelVelocidadeUltra"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = PlayerGui
 
@@ -44,7 +45,7 @@ local titulo = Instance.new("TextLabel")
 titulo.Size = UDim2.new(1, -30, 0, 25)
 titulo.Position = UDim2.new(0, 5, 0, 3)
 titulo.BackgroundTransparency = 1
-titulo.Text = "⚡ SPEED LIGHT v5"
+titulo.Text = "⚡ SPEED HYPER v7"
 titulo.TextColor3 = Color3.fromRGB(255, 255, 255)
 titulo.Font = Enum.Font.SourceSansBold
 titulo.TextSize = 12
@@ -56,7 +57,7 @@ caixaVelocidade.Size = UDim2.new(0, 75, 0, 30)
 caixaVelocidade.Position = UDim2.new(0, 10, 0, 35)
 caixaVelocidade.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 caixaVelocidade.BorderSizePixel = 0
-caixaVelocidade.Text = "60"
+caixaVelocidade.Text = "255" -- Configurado com o seu valor ideal automaticamente!
 caixaVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
 caixaVelocidade.Font = Enum.Font.SourceSans
 caixaVelocidade.TextSize = 16
@@ -83,7 +84,7 @@ local botaoCorner = Instance.new("UICorner")
 botaoCorner.CornerRadius = UDim.new(0, 5)
 botaoCorner.Parent = botaoVelocidade
 
--- 📱 MINI BOTÃO DE MINIMIZAR
+-- MINI BOTÃO DE MINIMIZAR
 local botaoMinimizar = Instance.new("TextButton")
 botaoMinimizar.Size = UDim2.new(0, 18, 0, 18)
 botaoMinimizar.Position = UDim2.new(1, -23, 0, 5)
@@ -116,39 +117,13 @@ botaoMinimizar.MouseButton1Click:Connect(function()
 	end
 end)
 
--- 🛡️ LÓGICA ULTRA-LEVE (SÓ PROCESSA QUANDO O JOGO MUDA A VELOCIDADE)
+-- 🛡️ SISTEMA CALIBRADO PARA FORÇA BRUTA (250+)
 local velocidadeAlvo = 16
-local conexaoMudanca = nil
-
-local function travarHumanoid(humanoid)
-	if conexaoMudanca then conexaoMudanca:Disconnect() end
-	humanoid.WalkSpeed = velocidadeAlvo
-	
-	-- Monitoramento inteligente por evento (Gasta 0% de CPU em standby)
-	conexaoMudanca = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-		if humanoid.WalkSpeed ~= velocidadeAlvo then
-			humanoid.WalkSpeed = velocidadeAlvo
-		end
-	end)
-end
-
-jogador.CharacterAdded:Connect(function(personagem)
-	local humanoid = personagem:WaitForChild("Humanoid", 10)
-	if humanoid then
-		task.wait(0.2)
-		travarHumanoid(humanoid)
-	end
-end)
 
 botaoVelocidade.MouseButton1Click:Connect(function()
 	local num = tonumber(caixaVelocidade.Text)
 	if num then
 		velocidadeAlvo = num
-		local personagem = jogador.Character
-		if personagem then
-			local humanoid = personagem:FindFirstChildOfClass("Humanoid")
-			if humanoid then travarHumanoid(humanoid) end
-		end
 		
 		botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 		botaoVelocidade.TextColor3 = Color3.fromRGB(0, 0, 0)
@@ -160,12 +135,37 @@ botaoVelocidade.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- LOOP ADAPTADO DE POST-SIMULATION PARA EVITAR O TELEPORTE DO ROBLOX
+RunService.PostSimulation:Connect(function()
+	local personagem = jogador.Character
+	if personagem then
+		local humanoid = personagem:FindFirstChildOfClass("Humanoid")
+		local rootPart = personagem:FindFirstChild("HumanoidRootPart")
+		
+		if humanoid and rootPart then
+			-- Força WalkSpeed nativo baixo para o anti-cheat do jogo ler valores menores e não puxar
+			humanoid.WalkSpeed = math.clamp(velocidadeAlvo, 16, 32)
+			
+			-- Se estiver se movendo, injeta a velocidade monstruosa direto no vetor de física linear
+			if humanoid.MoveDirection.Magnitude > 0 and velocidadeAlvo > 32 then
+				local direcao = humanoid.MoveDirection
+				-- Aplica o valor real (Ex: 250 ou 260) diretamente nos eixos X e Z, travando o Y para não bugar no chão
+				rootPart.AssemblyLinearVelocity = Vector3.new(
+					direcao.X * velocidadeAlvo,
+					rootPart.AssemblyLinearVelocity.Y, 
+					direcao.Z * velocidadeAlvo
+				)
+			end
+		end
+	end
+end)
+
 if jogador.Character then
 	local hum = jogador.Character:FindFirstChildOfClass("Humanoid")
 	if hum then travarHumanoid(hum) end
 end
 
--- ARRASTAR MOBILE / TOUCH LEVE
+-- ARRASTAR MOBILE / TOUCH
 local arrastando, inputArrastar, inicioArrastar, posicaoInicial
 local function atualizarPosicao(input)
 	local diferenca = input.Position - inicioArrastar
