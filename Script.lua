@@ -6,14 +6,13 @@ end
 -- SERVIÇOS UNIVERSAIS DO ROBLOX
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 
 local jogador = Players.LocalPlayer
 local PlayerGui = jogador:WaitForChild("PlayerGui", 20)
 
 -- INSTÂNCIA UNIVERSAL DA INTERFACE
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PainelVelocidadeElite"
+screenGui.Name = "PainelVelocidadeSuperLeve"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = PlayerGui
 
@@ -45,7 +44,7 @@ local titulo = Instance.new("TextLabel")
 titulo.Size = UDim2.new(1, -30, 0, 25)
 titulo.Position = UDim2.new(0, 5, 0, 3)
 titulo.BackgroundTransparency = 1
-titulo.Text = "⚡ SPEED PRO v4"
+titulo.Text = "⚡ SPEED LIGHT v5"
 titulo.TextColor3 = Color3.fromRGB(255, 255, 255)
 titulo.Font = Enum.Font.SourceSansBold
 titulo.TextSize = 12
@@ -84,7 +83,7 @@ local botaoCorner = Instance.new("UICorner")
 botaoCorner.CornerRadius = UDim.new(0, 5)
 botaoCorner.Parent = botaoVelocidade
 
--- 📱 MINI BOTÃO DE MINIMIZAR INTELIGENTE
+-- 📱 MINI BOTÃO DE MINIMIZAR
 local botaoMinimizar = Instance.new("TextButton")
 botaoMinimizar.Size = UDim2.new(0, 18, 0, 18)
 botaoMinimizar.Position = UDim2.new(1, -23, 0, 5)
@@ -117,7 +116,7 @@ botaoMinimizar.MouseButton1Click:Connect(function()
 	end
 end)
 
--- LÓGICA DE VELOCIDADE TRAVADA MÁXIMA
+-- 🛡️ LÓGICA ULTRA-LEVE (SÓ PROCESSA QUANDO O JOGO MUDA A VELOCIDADE)
 local velocidadeAlvo = 16
 local conexaoMudanca = nil
 
@@ -125,6 +124,7 @@ local function travarHumanoid(humanoid)
 	if conexaoMudanca then conexaoMudanca:Disconnect() end
 	humanoid.WalkSpeed = velocidadeAlvo
 	
+	-- Monitoramento inteligente por evento (Gasta 0% de CPU em standby)
 	conexaoMudanca = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
 		if humanoid.WalkSpeed ~= velocidadeAlvo then
 			humanoid.WalkSpeed = velocidadeAlvo
@@ -160,23 +160,12 @@ botaoVelocidade.MouseButton1Click:Connect(function()
 	end
 end)
 
--- 🔥 ATUALIZAÇÃO DO ROBLOX: POST-SIMULATION (Deixa a câmera lisa)
-RunService.PostSimulation:Connect(function()
-	local personagem = jogador.Character
-	if personagem then
-		local humanoid = personagem:FindFirstChildOfClass("Humanoid")
-		if humanoid and humanoid.WalkSpeed ~= velocidadeAlvo then
-			humanoid.WalkSpeed = velocidadeAlvo
-		end
-	end
-end)
-
 if jogador.Character then
 	local hum = jogador.Character:FindFirstChildOfClass("Humanoid")
 	if hum then travarHumanoid(hum) end
 end
 
--- ARRASTAR MOBILE / TOUCH
+-- ARRASTAR MOBILE / TOUCH LEVE
 local arrastando, inputArrastar, inicioArrastar, posicaoInicial
 local function atualizarPosicao(input)
 	local diferenca = input.Position - inicioArrastar
