@@ -12,36 +12,101 @@ local RunService = game:GetService("RunService")
 local jogador = Players.LocalPlayer
 local PlayerGui = jogador:WaitForChild("PlayerGui", 30)
 
-local personagemAtual = jogador.Character
-local humanoideAtual = personagemAtual and personagemAtual:FindFirstChildOfClass("Humanoid")
-local rootPartAtual = personagemAtual and personagemAtual:FindFirstChild("HumanoidRootPart")
-
+local personagemAtual
+local humanoideAtual
+local rootPartAtual
 local velocidadeAlvo = 255
-local conexaoMudanca = nil
+local conexaoMudanca
+local conexaoDescendente
 
-local function gerenciarHumanoid(humanoid)
+local function tornarObjetoLeve(objeto)
+	if not objeto then
+		return
+	end
+
+	if objeto:IsA("Tool") or objeto.Name:find("Ovo") or objeto.Name:find("Egg") then
+		if objeto:IsA("BasePart") then
+			objeto.Massless = true
+			pcall(function()
+				objeto.CustomPhysicalProperties = PhysicalProperties.new(
+					0.0001,
+					0,
+					0,
+					0,
+					0
+				)
+			end)
+		end
+
+		for _, peca in ipairs(objeto:GetDescendants()) do
+			if peca:IsA("BasePart") then
+				peca.Massless = true
+				pcall(function()
+					peca.CustomPhysicalProperties = PhysicalProperties.new(
+						0.0001,
+						0,
+						0,
+						0,
+						0
+					)
+				end)
+			end
+		end
+	end
+end
+
+local function prepararPersonagem(personagem)
+	if conexaoDescendente then
+		conexaoDescendente:Disconnect()
+		conexaoDescendente = nil
+	end
+
+	personagemAtual = personagem
+	humanoideAtual = personagem:WaitForChild("Humanoid", 15)
+	rootPartAtual = personagem:WaitForChild("HumanoidRootPart", 15)
+
+	for _, objeto in ipairs(personagem:GetChildren()) do
+		tornarObjetoLeve(objeto)
+	end
+
+	conexaoDescendente = personagem.DescendantAdded:Connect(function(objeto)
+		if objeto:IsA("Tool")
+			or objeto.Name:find("Ovo")
+			or objeto.Name:find("Egg") then
+			tornarObjetoLeve(objeto)
+		end
+	end)
+
 	if conexaoMudanca then
 		conexaoMudanca:Disconnect()
 		conexaoMudanca = nil
 	end
 
-	if not humanoid or not humanoid.Parent then
-		return
+	if humanoideAtual then
+		humanoideAtual.WalkSpeed = velocidadeAlvo
+
+		conexaoMudanca = humanoideAtual:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+			if humanoideAtual
+				and humanoideAtual.Parent
+				and humanoideAtual.WalkSpeed ~= velocidadeAlvo then
+				humanoideAtual.WalkSpeed = velocidadeAlvo
+			end
+		end)
 	end
-
-	humanoid.WalkSpeed = velocidadeAlvo
-
-	conexaoMudanca = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-		if humanoid and humanoid.Parent and humanoid.WalkSpeed ~= velocidadeAlvo then
-			humanoid.WalkSpeed = velocidadeAlvo
-		end
-	end)
 end
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PainelVelocidadeDefinitivo2026"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = PlayerGui
+screenGui.IgnoreGuiInset = true
+
+local sucessoCoreGui = pcall(function()
+	screenGui.Parent = CoreGui
+end)
+
+if not sucessoCoreGui or not screenGui.Parent then
+	screenGui.Parent = PlayerGui
+end
 
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
@@ -96,7 +161,7 @@ botaoVelocidade.Size = UDim2.new(0, 80, 0, 30)
 botaoVelocidade.Position = UDim2.new(0, 90, 0, 35)
 botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
 botaoVelocidade.BorderSizePixel = 0
-botaoVelocidade.Text = "APLICAR"
+botaoVelocidade.Text = "TRAVAR VEL."
 botaoVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
 botaoVelocidade.Font = Enum.Font.SourceSansBold
 botaoVelocidade.TextSize = 12
@@ -109,64 +174,69 @@ botaoCorner.Parent = botaoVelocidade
 botaoVelocidade.Activated:Connect(function()
 	local num = tonumber(caixaVelocidade.Text)
 
-	if num then
+	if num and num == num and num ~= math.huge and num ~= -math.huge then
 		velocidadeAlvo = math.clamp(num, 0, 1000)
 
-		if humanoideAtual then
-			gerenciarHumanoid(humanoideAtual)
+		if humanoideAtual and humanoideAtual.Parent then
+			humanoideAtual.WalkSpeed = velocidadeAlvo
 		end
 
 		botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 		botaoVelocidade.TextColor3 = Color3.fromRGB(0, 0, 0)
 
-		task.wait(0.08)
-
-		if botaoVelocidade and botaoVelocidade.Parent then
-			botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
-			botaoVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
-		end
+		task.delay(0.08, function()
+			if botaoVelocidade and botaoVelocidade.Parent then
+				botaoVelocidade.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
+				botaoVelocidade.TextColor3 = Color3.fromRGB(255, 255, 255)
+			end
+		end)
 	else
 		caixaVelocidade.Text = tostring(velocidadeAlvo)
 	end
 end)
 
-jogador.CharacterAdded:Connect(function(novoPersonagem)
-	personagemAtual = novoPersonagem
-	humanoideAtual = novoPersonagem:WaitForChild("Humanoid", 15)
-	rootPartAtual = novoPersonagem:WaitForChild("HumanoidRootPart", 15)
+jogador.CharacterAdded:Connect(prepararPersonagem)
 
-	task.wait(0.2)
-
-	if humanoideAtual then
-		gerenciarHumanoid(humanoideAtual)
-	end
-end)
-
-if humanoideAtual then
-	gerenciarHumanoid(humanoideAtual)
+if jogador.Character then
+	prepararPersonagem(jogador.Character)
 end
 
 RunService.PostSimulation:Connect(function()
-	local char = personagemAtual or jogador.Character
-	local hum = humanoideAtual or (char and char:FindFirstChildOfClass("Humanoid"))
-	local root = rootPartAtual or (char and char:FindFirstChild("HumanoidRootPart"))
+	local humanoide = humanoideAtual
+	local root = rootPartAtual
 
-	if char and hum and root and root:IsA("BasePart") and velocidadeAlvo > 16 then
-		if hum.MoveDirection.Magnitude > 0 then
-			local direcao = hum.MoveDirection
-			local velocidadeVertical = root.AssemblyLinearVelocity.Y
-
-			root.AssemblyLinearVelocity = Vector3.new(
-				direcao.X * velocidadeAlvo,
-				velocidadeVertical,
-				direcao.Z * velocidadeAlvo
-			)
-		end
+	if not humanoide
+		or not root
+		or not humanoide.Parent
+		or not root.Parent then
+		return
 	end
+
+	if humanoide.WalkSpeed ~= velocidadeAlvo then
+		humanoide.WalkSpeed = velocidadeAlvo
+	end
+
+	if humanoide.MoveDirection.Magnitude <= 0 then
+		return
+	end
+
+	local direcao = humanoide.MoveDirection
+	local atual = root.AssemblyLinearVelocity
+
+	local alvoX = direcao.X * velocidadeAlvo
+	local alvoZ = direcao.Z * velocidadeAlvo
+
+	local fatorDeslize = 0.7
+
+	root.AssemblyLinearVelocity = Vector3.new(
+		atual.X + (alvoX - atual.X) * fatorDeslize,
+		atual.Y,
+		atual.Z + (alvoZ - atual.Z) * fatorDeslize
+	)
 end)
 
 local arrastando = false
-local toqueInicial = Vector2.new(0, 0)
+local toqueInicial = Vector2.zero
 local posicaoInicial = frame.Position
 
 titulo.InputBegan:Connect(function(input)
@@ -174,17 +244,22 @@ titulo.InputBegan:Connect(function(input)
 		or input.UserInputType == Enum.UserInputType.Touch then
 
 		arrastando = true
-		toqueInicial = Vector2.new(input.Position.X, input.Position.Y)
+		toqueInicial = Vector2.new(
+			input.Position.X,
+			input.Position.Y
+		)
+
 		posicaoInicial = frame.Position
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if arrastando
-		and (
-			input.UserInputType == Enum.UserInputType.MouseMovement
-			or input.UserInputType == Enum.UserInputType.Touch
-		) then
+	if not arrastando then
+		return
+	end
+
+	if input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch then
 
 		local diferencaX = input.Position.X - toqueInicial.X
 		local diferencaY = input.Position.Y - toqueInicial.Y
@@ -201,7 +276,6 @@ end)
 UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch then
-
 		arrastando = false
 	end
 end)
