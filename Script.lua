@@ -1,5 +1,5 @@
 -- =======================================================================================
--- ⚡ SCRIPT AUTOMÁTICO DE VELOCIDADE HYPER v2026 - VERSÃO ULTIMATE SEM DEFEITOS
+-- ⚡ SCRIPT AUTOMÁTICO DE VELOCIDADE HYPER v2026 - VERSÃO COMPLETA E SEM ERROS
 -- =======================================================================================
 
 -- GARANTE O CARREGAMENTO COMPLETO E IMEDIATO DO JOGO BASE
@@ -8,7 +8,7 @@ if not game:IsLoaded() then
 end
 task.wait(0.5)
 
--- DECLARAÇÃO DOS SERVIÇOS NATIVOS ESSENCIAIS DO ROBLOX
+-- DECLARAÇÃO DOS SERVIÇOS NATIVOS ESSENCIAIS DO ROBLOX (PADRÃO RECENTE 2026)
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -64,7 +64,7 @@ if not pcallInterface or not screenGui.Parent then
 	screenGui.Parent = PlayerGui
 end
 
--- Janela Estrutural Principal
+-- Janela Principal Estrutural
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 180, 0, 75)
 frame.Position = UDim2.new(0.05, 0, 0.4, 0)
@@ -180,7 +180,7 @@ if jogador.Character then
 	if hum then gerenciarHumanoid(hum) end
 end
 
--- 🔥 MOTOR PRINCIPAL DE PROPULSÃO SEM PUXÕES (SISTEMA DE EVENTO POST-SIMULATION)
+-- 🔥 MOTOR PRINCIPAL DE PROPULSÃO COMPLETO (SISTEMA DE EVENTO RECENTE POST-SIMULATION 2026)
 RunService.PostSimulation:Connect(function()
 	local personagem = jogador.Character
 	if personagem then
@@ -200,13 +200,13 @@ RunService.PostSimulation:Connect(function()
 				end
 			end
 			
-			-- Injeta o vetor de força imediatamente ao empurrar o direcional na tela mobile
+			-- Injeta o vetor de força corrigido imediatamente ao empurrar o direcional na tela mobile
 			if humanoid.MoveDirection.Magnitude > 0 then
 				local direcao = humanoid.MoveDirection
 				rootPart.AssemblyLinearVelocity = Vector3.new(
 					direcao.X * velocidadeAlvo,
 					rootPart.AssemblyLinearVelocity.Y, -- Estabiliza a gravidade e o eixo de queda/pulo
-					direcao.Z * velocityAlvo or direcao.Z * velocidadeAlvo
+					direcao.Z * velocidadeAlvo
 				)
 			else
 				-- Freio estático absoluto para interromper o movimento assim que soltar o dedo
