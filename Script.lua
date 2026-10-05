@@ -1,7 +1,7 @@
 -- =========================================================
--- SPEED ULTRA V7.9
--- V7.9 + CARRY 255 ESTAVEL
--- Mantem ~75% do visual: sem remover texturas, materiais ou sombras
+-- SPEED ULTRA V8.0
+-- V8.0 + OTIMIZAÇÃO LEVE 35% REVERSÍVEL
+-- Otimiza apenas os efeitos selecionados em 35%; os outros 65% do visual permanecem intocados.: sem remover texturas, materiais ou sombras
 
 -- =========================================================
 
@@ -47,7 +47,7 @@ pcall(function()
 		end
 	end
 end)
-local REGISTRY_KEY = "__SPEED_ULTRA_V79_INSTANCE"
+local REGISTRY_KEY = "__SPEED_ULTRA_V80_INSTANCE"
 
 pcall(function()
 	local oldCleanup = Env[REGISTRY_KEY]
@@ -118,7 +118,7 @@ local Config = {
 		"HeavyObject"
 	},
 
-	GUI_NAME = "SpeedUltraV79_2026",
+	GUI_NAME = "SpeedUltraV80_2026",
 
 	-- Posicao inicial. Depois do arraste, a posicao pode ser lembrada.
 	START_SIDE = "Left", -- "Left" / "Right"
@@ -126,14 +126,15 @@ local Config = {
 	EDGE_MARGIN = 10,
 	REMEMBER_POSITION = true,
 
-	-- Otimizacao leve: reduz cerca de 25% da carga visual dos efeitos,
+	-- Otimizacao leve: reduz cerca de 35% dos efeitos selecionados dos efeitos,
 	-- preservando a maior parte do visual do mapa.
-	OPTIMIZATION_STRENGTH = 0.25,
+	OPTIMIZATION_STRENGTH = 0.35,
 	QUALITY_DROP_LEVELS = 1,
 	MIN_QUALITY_LEVEL = 5,
 	-- Limite de trabalho por fatia para evitar pico de CPU/renderizacao.
 	OPTIMIZE_FRAME_BUDGET = 0.0025,
-	OPTIMIZE_ONCE = true,
+	OPTIMIZE_ONCE = false,
+	OPTIMIZE_MAX_SECONDS = 4,
 
 	DEBUG = false,
 
@@ -181,6 +182,9 @@ local State = {
 	Optimizing = false,
 	Optimized = false,
 	OptimizeToken = 0,
+	OptimizationGeneration = 0,
+	OptimizationOriginals = {},
+	OptimizationOriginalQuality = nil,
 
 	Collapsed = false,
 	ApplyingSpeed = false,
@@ -211,7 +215,7 @@ local Title
 
 local function Debug(...)
 	if Config.DEBUG then
-		warn("[SPEED ULTRA V7.9]", ...)
+		warn("[SPEED ULTRA V8.0]", ...)
 	end
 end
 
@@ -347,7 +351,7 @@ Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -42, 1, 0)
 Title.Position = UDim2.fromOffset(8, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "SPEED ULTRA V7.9"
+Title.Text = "SPEED ULTRA V8.0"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 12
@@ -493,9 +497,9 @@ local function RefreshStatus()
 
 	if State.Optimized then
 		if State.Carrying then
-			SetStatus("OTIMIZADO 25% • CARRY")
+			SetStatus("OTIMIZADO 35% • CARRY")
 		else
-			SetStatus("OTIMIZADO 25% • ON")
+			SetStatus("OTIMIZADO 35% • ON")
 		end
 		return
 	end
@@ -1120,7 +1124,7 @@ end))
 -- POSICAO / LADO
 -- =========================================================
 
-local POSITION_KEY = "__SPEED_ULTRA_V79_POSITION"
+local POSITION_KEY = "__SPEED_ULTRA_V80_POSITION"
 
 local function GetPanelLimits()
 	local camera = workspace.CurrentCamera
@@ -1263,11 +1267,11 @@ local function SetCollapsed(collapsed)
 	if collapsed then
 		Frame.Size = CollapsedSize
 		CollapseButton.Text = "+"
-		Title.Text = "SPEED ULTRA V7.9"
+		Title.Text = "SPEED ULTRA V8.0"
 	else
 		Frame.Size = ExpandedSize
 		CollapseButton.Text = "—"
-		Title.Text = "SPEED ULTRA V7.9"
+		Title.Text = "SPEED ULTRA V8.0"
 	end
 
 	local x = Frame.AbsolutePosition.X
@@ -1285,8 +1289,72 @@ end))
 -- OTIMIZACAO
 -- =========================================================
 
+local function SaveOriginal(object, property, value)
+	if not object then
+		return
+	end
+
+	local record = State.OptimizationOriginals[object]
+	if not record then
+		record = {}
+		State.OptimizationOriginals[object] = record
+	end
+
+	if record[property] == nil then
+		record[property] = value
+	end
+end
+
+local function RestoreOptimizedObjects()
+	State.OptimizeToken += 1
+	State.OptimizationGeneration += 1
+
+	for object, properties in pairs(State.OptimizationOriginals) do
+		if object and object.Parent then
+			for property, value in pairs(properties) do
+				pcall(function()
+					object[property] = value
+				end)
+			end
+		end
+	end
+
+	State.OptimizationOriginals = {}
+
+	if State.OptimizationOriginalQuality ~= nil then
+		pcall(function()
+			local settings = UserSettings():GetService("UserGameSettings")
+			settings.SavedQualityLevel = State.OptimizationOriginalQuality
+		end)
+	end
+
+	State.OptimizationOriginalQuality = nil
+	State.Optimizing = false
+	State.Optimized = false
+	State.OptimizationGeneration += 1
+
+	if OptimizeButton and OptimizeButton.Parent then
+		OptimizeButton.Text = "OTIMIZA 35%"
+	end
+
+	RefreshStatus()
+end
+
 local function OptimizeGraphics()
 	if not State.Alive then
+		return
+	end
+
+	-- Segundo toque: desfaz a otimização anterior.
+	if State.Optimized and not State.Optimizing then
+		if OptimizeButton then
+			OptimizeButton.Text = "RESTAURANDO..."
+		end
+		SetStatus("RESTAURANDO...")
+
+		task.spawn(function()
+			RestoreOptimizedObjects()
+		end)
 		return
 	end
 
@@ -1294,43 +1362,35 @@ local function OptimizeGraphics()
 		return
 	end
 
-	if Config.OPTIMIZE_ONCE and State.Optimized then
-		SetStatus("JA OTIMIZADO 25%")
-		task.delay(0.8, function()
-			if State.Alive then
-				RefreshStatus()
-			end
-		end)
-		return
-	end
-
 	State.Optimizing = true
 	State.Optimized = false
 	State.OptimizeToken += 1
+	State.OptimizationGeneration += 1
 
 	local optimizeToken = State.OptimizeToken
+	local generation = State.OptimizationGeneration
 	local reduction = math.clamp(Config.OPTIMIZATION_STRENGTH, 0, 0.75)
 	local keepFactor = 1 - reduction
 
-	OptimizeButton.Text = "OTIMIZANDO..."
-	SetStatus("OTIMIZANDO 25%...")
+	if OptimizeButton then
+		OptimizeButton.Text = "OTIMIZANDO..."
+	end
+	SetStatus("OTIMIZANDO 35%...")
 
-	-- ---------------------------------------------------------
-	-- Qualidade: cai apenas 1 nivel a partir da qualidade atual.
-	-- Niveis baixos (1-4) ficam intocados para nao degradar mais.
-	-- Automatic tambem fica intocado.
-	-- ---------------------------------------------------------
+	-- Guarda a qualidade original apenas uma vez por ciclo.
 	pcall(function()
 		local settings = UserSettings():GetService("UserGameSettings")
+		if State.OptimizationOriginalQuality == nil then
+			State.OptimizationOriginalQuality = settings.SavedQualityLevel
+		end
+
 		local saved = settings.SavedQualityLevel
-		local currentName = tostring(saved)
-		local currentLevel = tonumber(currentName:match("(%d+)$"))
+		local currentLevel = tonumber(tostring(saved):match("(%d+)$"))
 
 		if currentLevel and currentLevel >= Config.MIN_QUALITY_LEVEL then
-			local drop = math.max(0, math.floor(Config.QUALITY_DROP_LEVELS))
 			local target = math.max(
 				Config.MIN_QUALITY_LEVEL,
-				currentLevel - drop
+				currentLevel - math.max(0, math.floor(Config.QUALITY_DROP_LEVELS))
 			)
 
 			if target < currentLevel then
@@ -1342,10 +1402,7 @@ local function OptimizeGraphics()
 		end
 	end)
 
-	-- ---------------------------------------------------------
-	-- Pos-processamento leve: remove apenas Blur e DepthOfField.
-	-- Bloom, ColorCorrection, SunRays e Atmosphere permanecem.
-	-- ---------------------------------------------------------
+	-- Remove somente os dois pós-efeitos mais caros para este modo leve.
 	pcall(function()
 		for _, effect in ipairs(Lighting:GetChildren()) do
 			if not State.Alive or State.OptimizeToken ~= optimizeToken then
@@ -1353,6 +1410,7 @@ local function OptimizeGraphics()
 			end
 
 			if effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect") then
+				SaveOriginal(effect, "Enabled", effect.Enabled)
 				pcall(function()
 					effect.Enabled = false
 				end)
@@ -1360,73 +1418,82 @@ local function OptimizeGraphics()
 		end
 	end)
 
-	-- ---------------------------------------------------------
-	-- Varredura incremental.
-	-- Em vez de GetDescendants() gerar uma lista enorme de uma vez,
-	-- percorremos a hierarquia em pequenas fatias de tempo. Isso
-	-- reduz o pico de CPU e a chance de uma microtravada durante o
-	-- proprio processo de otimizacao.
-	-- ---------------------------------------------------------
+	-- Caminhada incremental. O limite de tempo evita ficar preso em mapas enormes.
 	task.spawn(function()
 		local stack = {workspace}
 		local changed = 0
+		local visited = 0
 		local sliceStart = os.clock()
+		local wholeStart = sliceStart
 		local budget = math.clamp(
 			tonumber(Config.OPTIMIZE_FRAME_BUDGET) or 0.0025,
 			0.0005,
-			0.008
+			0.006
 		)
+		local maxSeconds = math.max(2, tonumber(Config.OPTIMIZE_MAX_SECONDS) or 8)
+		local partial = false
 
 		local function ProcessObject(object)
 			if not object then
 				return
 			end
 
+			visited += 1
+
 			pcall(function()
-				-- Particulas: -25% na taxa, mantendo o efeito ligado.
 				if object:IsA("ParticleEmitter") then
 					local rate = object.Rate
 					if IsFiniteNumber(rate) and rate > 0 then
+						SaveOriginal(object, "Rate", rate)
 						object.Rate = math.max(0, rate * keepFactor)
 						changed += 1
 					end
 
-				-- Trails: -25% no tempo de vida visual.
 				elseif object:IsA("Trail") then
 					local lifetime = object.Lifetime
 					if IsFiniteNumber(lifetime) and lifetime > 0 then
+						SaveOriginal(object, "Lifetime", lifetime)
 						object.Lifetime = math.max(0.05, lifetime * keepFactor)
 						changed += 1
 					end
 
-				-- Smoke: pequena reducao de opacidade e tamanho.
 				elseif object:IsA("Smoke") then
-					if IsFiniteNumber(object.Opacity) then
-						object.Opacity = math.clamp(object.Opacity * keepFactor, 0, 1)
+					local opacity = object.Opacity
+					local size = object.Size
+					if IsFiniteNumber(opacity) then
+						SaveOriginal(object, "Opacity", opacity)
+						object.Opacity = math.clamp(opacity * keepFactor, 0, 1)
 					end
-					if IsFiniteNumber(object.Size) then
-						object.Size = math.max(0.1, object.Size * (1 - reduction * 0.5))
+					if IsFiniteNumber(size) then
+						SaveOriginal(object, "Size", size)
+						object.Size = math.max(0.1, size * (1 - reduction * 0.5))
 					end
 					changed += 1
 
-				-- Fire: pequena reducao de tamanho e calor.
 				elseif object:IsA("Fire") then
-					if IsFiniteNumber(object.Size) then
-						object.Size = math.max(0.1, object.Size * (1 - reduction * 0.5))
+					local size = object.Size
+					local heat = object.Heat
+					if IsFiniteNumber(size) then
+						SaveOriginal(object, "Size", size)
+						object.Size = math.max(0.1, size * (1 - reduction * 0.5))
 					end
-					if IsFiniteNumber(object.Heat) then
-						object.Heat = object.Heat * keepFactor
+					if IsFiniteNumber(heat) then
+						SaveOriginal(object, "Heat", heat)
+						object.Heat = heat * keepFactor
 					end
 					changed += 1
-
-				-- Sparkles, Beams, materiais, texturas e sombras: intocados.
 				end
 			end)
 		end
 
 		while #stack > 0 do
-			if not State.Alive or State.OptimizeToken ~= optimizeToken then
+			if not State.Alive or State.OptimizeToken ~= optimizeToken or State.OptimizationGeneration ~= generation then
 				return
+			end
+
+			if os.clock() - wholeStart >= maxSeconds then
+				partial = true
+				break
 			end
 
 			local parent = stack[#stack]
@@ -1439,7 +1506,7 @@ local function OptimizeGraphics()
 
 			if ok and children then
 				for _, object in ipairs(children) do
-					if not State.Alive or State.OptimizeToken ~= optimizeToken then
+					if not State.Alive or State.OptimizeToken ~= optimizeToken or State.OptimizationGeneration ~= generation then
 						return
 					end
 
@@ -1450,21 +1517,34 @@ local function OptimizeGraphics()
 						sliceStart = os.clock()
 						RunService.Heartbeat:Wait()
 					end
+
+					if os.clock() - wholeStart >= maxSeconds then
+						partial = true
+						break
+					end
 				end
 			end
 		end
 
-		if not State.Alive or State.OptimizeToken ~= optimizeToken then
+		if not State.Alive or State.OptimizeToken ~= optimizeToken or State.OptimizationGeneration ~= generation then
 			return
 		end
 
 		State.Optimizing = false
 		State.Optimized = true
-		OptimizeButton.Text = "OTIMIZADO 25%"
-		SetStatus("OTIMIZADO 25% • " .. tostring(changed) .. " EFEITOS")
+
+		if OptimizeButton then
+			OptimizeButton.Text = "OTIMIZADO 35%"
+		end
+
+		if partial then
+			SetStatus("OTIMIZADO 35% • PARCIAL")
+		else
+			SetStatus("OTIMIZADO 35% • " .. tostring(changed) .. " EFEITOS")
+		end
 
 		task.delay(1.5, function()
-			if State.Alive then
+			if State.Alive and State.Optimized and not State.Optimizing then
 				RefreshStatus()
 			end
 		end)
@@ -1826,7 +1906,7 @@ end
 
 RefreshStatus()
 
-Debug("Speed Ultra V7.9 iniciado.")
+Debug("Speed Ultra V8.0 iniciado.")
 
 -- =========================================================
 -- FIM
