@@ -1,6 +1,8 @@
 -- =========================================================
--- SPEED ULTRA V7.5
--- V7.3 + PROTECOES + GUI RECOLHIVEL + POSICAO LATERAL
+-- SPEED ULTRA V7.7
+-- V7.7 + OTIMIZACAO LEVE (25%)
+-- Mantem ~75% do visual: sem remover texturas, materiais ou sombras
+
 -- =========================================================
 
 if not game:IsLoaded() then
@@ -45,7 +47,7 @@ pcall(function()
 		end
 	end
 end)
-local REGISTRY_KEY = "__SPEED_ULTRA_V75_INSTANCE"
+local REGISTRY_KEY = "__SPEED_ULTRA_V77_INSTANCE"
 
 pcall(function()
 	local oldCleanup = Env[REGISTRY_KEY]
@@ -108,7 +110,7 @@ local Config = {
 		"HeavyObject"
 	},
 
-	GUI_NAME = "SpeedUltraV75_2026",
+	GUI_NAME = "SpeedUltraV77_2026",
 
 	-- Posicao inicial. Depois do arraste, a posicao pode ser lembrada.
 	START_SIDE = "Left", -- "Left" / "Right"
@@ -116,20 +118,17 @@ local Config = {
 	EDGE_MARGIN = 10,
 	REMEMBER_POSITION = true,
 
-	-- Otimizacao dividida em pequenos lotes para reduzir travadas.
-	OPTIMIZE_BATCH = 150,
-	OPTIMIZE_DELAY = 0.01,
+	-- Otimizacao leve: reduz cerca de 25% da carga visual dos efeitos,
+	-- preservando a maior parte do visual do mapa.
+	OPTIMIZATION_STRENGTH = 0.25,
+	QUALITY_DROP_LEVELS = 1,
+	MIN_QUALITY_LEVEL = 5,
+	-- Limite de trabalho por fatia para evitar pico de CPU/renderizacao.
+	OPTIMIZE_FRAME_BUDGET = 0.0025,
 	OPTIMIZE_ONCE = true,
 
 	DEBUG = false,
 
-	-- Modo grafico agressivo. Nao altera a logica de movimento.
-	BANANA_MODE = false,
-	BANANA_MATERIAL = true,
-	BANANA_HIDE_TEXTURES = true,
-	BANANA_DISABLE_HIGHLIGHTS = true,
-	BANANA_MAX_PARTS_PER_BATCH = 180,
-	BANANA_BATCH_DELAY = 0.008
 }
 
 -- =========================================================
@@ -171,10 +170,6 @@ local State = {
 	Optimizing = false,
 	Optimized = false,
 	OptimizeToken = 0,
-	Banana_MODE = false,
-	BananaApplying = false,
-	BananaToken = 0,
-	BananaChanged = {},
 
 	Collapsed = false,
 	ApplyingSpeed = false,
@@ -194,7 +189,6 @@ local Status
 local SpeedBox
 local Toggle
 local OptimizeButton
-local BananaButton
 local CollapseButton
 local SideButton
 local Body
@@ -206,7 +200,7 @@ local Title
 
 local function Debug(...)
 	if Config.DEBUG then
-		warn("[SPEED ULTRA V7.5]", ...)
+		warn("[SPEED ULTRA V7.7]", ...)
 	end
 end
 
@@ -342,7 +336,7 @@ Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -42, 1, 0)
 Title.Position = UDim2.fromOffset(8, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "SPEED ULTRA V7.5"
+Title.Text = "SPEED ULTRA V7.7"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 12
@@ -462,20 +456,6 @@ local SideCorner = Instance.new("UICorner")
 SideCorner.CornerRadius = UDim.new(0, 5)
 SideCorner.Parent = SideButton
 
-BananaButton = Instance.new("TextButton")
-BananaButton.Size = UDim2.fromOffset(185, 27)
-BananaButton.Position = UDim2.fromOffset(5, 108)
-BananaButton.BackgroundColor3 = Color3.fromRGB(80, 80, 45)
-BananaButton.BorderSizePixel = 0
-BananaButton.Text = "BANANA: OFF"
-BananaButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-BananaButton.Font = Enum.Font.SourceSansBold
-BananaButton.TextSize = 11
-BananaButton.Parent = Body
-
-local BananaCorner = Instance.new("UICorner")
-BananaCorner.CornerRadius = UDim.new(0, 5)
-BananaCorner.Parent = BananaButton
 
 -- =========================================================
 -- STATUS
@@ -494,19 +474,6 @@ local function RefreshStatus()
 		return
 	end
 
-	if State.BananaApplying then
-		SetStatus("BANANA...")
-		return
-	end
-
-	if Config.BANANA_MODE then
-		if State.Carrying then
-			SetStatus("BANANA • CARRY")
-		else
-			SetStatus("BANANA • ON")
-		end
-		return
-	end
 
 	if State.Optimizing then
 		SetStatus("OTIMIZANDO...")
@@ -515,9 +482,9 @@ local function RefreshStatus()
 
 	if State.Optimized then
 		if State.Carrying then
-			SetStatus("OTIMIZADO • CARRY")
+			SetStatus("OTIMIZADO 25% • CARRY")
 		else
-			SetStatus("OTIMIZADO • ON")
+			SetStatus("OTIMIZADO 25% • ON")
 		end
 		return
 	end
@@ -1087,7 +1054,7 @@ end))
 -- POSICAO / LADO
 -- =========================================================
 
-local POSITION_KEY = "__SPEED_ULTRA_V75_POSITION"
+local POSITION_KEY = "__SPEED_ULTRA_V76_POSITION"
 
 local function GetPanelLimits()
 	local camera = workspace.CurrentCamera
@@ -1230,11 +1197,11 @@ local function SetCollapsed(collapsed)
 	if collapsed then
 		Frame.Size = CollapsedSize
 		CollapseButton.Text = "+"
-		Title.Text = "SPEED ULTRA V7.5"
+		Title.Text = "SPEED ULTRA V7.7"
 	else
 		Frame.Size = ExpandedSize
 		CollapseButton.Text = "—"
-		Title.Text = "SPEED ULTRA V7.5"
+		Title.Text = "SPEED ULTRA V7.7"
 	end
 
 	local x = Frame.AbsolutePosition.X
@@ -1246,244 +1213,6 @@ end
 
 SetConnection(Connections.Gui, "Collapse", CollapseButton.Activated:Connect(function()
 	SetCollapsed(not State.Collapsed)
-end))
-
--- =========================================================
--- MODO BANANA / DESEMPENHO MAXIMO
--- =========================================================
-
-local function RememberBananaProperty(object, property)
-	if not object or not object.Parent then
-		return
-	end
-
-	local ok, original = pcall(function()
-		return object[property]
-	end)
-
-	if not ok then
-		return
-	end
-
-	local key = tostring(object) .. "::" .. property
-	if State.BananaChanged[key] then
-		return
-	end
-
-	State.BananaChanged[key] = {
-		Object = object,
-		Property = property,
-		Value = original
-	}
-end
-
-local function BananaSet(object, property, value)
-	if not object or not object.Parent then
-		return
-	end
-
-	RememberBananaProperty(object, property)
-
-	pcall(function()
-		object[property] = value
-	end)
-end
-
-local function RestoreBanana()
-	State.BananaToken += 1
-	State.BananaApplying = false
-
-	for _, entry in pairs(State.BananaChanged) do
-		if entry.Object and entry.Object.Parent then
-			pcall(function()
-				entry.Object[entry.Property] = entry.Value
-			end)
-		end
-	end
-
-	State.BananaChanged = {}
-	State.Banana_MODE = false
-	Config.BANANA_MODE = false
-
-	if BananaButton and BananaButton.Parent then
-		BananaButton.Text = "BANANA: OFF"
-	end
-
-	RefreshStatus()
-end
-
-local function SetBananaStatus(active)
-	Config.BANANA_MODE = active
-	State.Banana_MODE = active
-
-	if BananaButton and BananaButton.Parent then
-		BananaButton.Text = active and "BANANA: ON" or "BANANA: OFF"
-	end
-end
-
-local function ApplyBanana()
-	if not State.Alive or State.BananaApplying then
-		return
-	end
-
-	State.BananaApplying = true
-	State.BananaToken += 1
-	local token = State.BananaToken
-
-	SetStatus("BANANA...")
-	BananaButton.Text = "BANANA..."
-
-	-- Qualidade do cliente no minimo.
-	pcall(function()
-		local settings = UserSettings():GetService("UserGameSettings")
-		settings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-	end)
-
-	-- Pós-processamento / iluminacao pesada.
-	pcall(function()
-		for _, effect in ipairs(Lighting:GetChildren()) do
-			if effect:IsA("BloomEffect")
-				or effect:IsA("BlurEffect")
-				or effect:IsA("ColorCorrectionEffect")
-				or effect:IsA("SunRaysEffect")
-				or effect:IsA("DepthOfFieldEffect") then
-				BananaSet(effect, "Enabled", false)
-			elseif effect:IsA("Atmosphere") then
-				BananaSet(effect, "Density", 0)
-				BananaSet(effect, "Haze", 0)
-				BananaSet(effect, "Glare", 0)
-			end
-		end
-	end)
-
-	pcall(function()
-		BananaSet(Lighting, "GlobalShadows", false)
-		BananaSet(Lighting, "EnvironmentDiffuseScale", 0)
-		BananaSet(Lighting, "EnvironmentSpecularScale", 0)
-	end)
-
-	pcall(function()
-		BananaSet(workspace.Terrain, "Decoration", false)
-	end)
-
-	task.spawn(function()
-		local objects = {}
-		local ok = pcall(function()
-			objects = workspace:GetDescendants()
-		end)
-
-		if not ok then
-			State.BananaApplying = false
-			SetBananaStatus(true)
-			RefreshStatus()
-			return
-		end
-
-		local count = 0
-
-		for _, object in ipairs(objects) do
-			if not State.Alive or State.BananaToken ~= token then
-				return
-			end
-
-			pcall(function()
-				-- Mantem o personagem do jogador intacto.
-				local isPlayerCharacter = State.Character
-					and object:IsDescendantOf(State.Character)
-
-				if object:IsA("ParticleEmitter")
-					or object:IsA("Trail")
-					or object:IsA("Beam")
-					or object:IsA("Smoke")
-					or object:IsA("Fire")
-					or object:IsA("Sparkles") then
-					BananaSet(object, "Enabled", false)
-				elseif object:IsA("Highlight") and Config.BANANA_DISABLE_HIGHLIGHTS then
-					BananaSet(object, "Enabled", false)
-				elseif object:IsA("BasePart") and not isPlayerCharacter then
-					BananaSet(object, "CastShadow", false)
-					BananaSet(object, "Reflectance", 0)
-
-					if Config.BANANA_MATERIAL then
-						BananaSet(object, "Material", Enum.Material.SmoothPlastic)
-					end
-
-					if object:IsA("MeshPart") then
-						BananaSet(object, "RenderFidelity", Enum.RenderFidelity.Performance)
-					end
-				elseif Config.BANANA_HIDE_TEXTURES
-					and not isPlayerCharacter
-					and (object:IsA("Decal") or object:IsA("Texture")) then
-					BananaSet(object, "Transparency", 1)
-				end
-			end)
-
-			count += 1
-			if count >= Config.BANANA_MAX_PARTS_PER_BATCH then
-				count = 0
-				task.wait(Config.BANANA_BATCH_DELAY)
-			end
-		end
-
-		if not State.Alive or State.BananaToken ~= token then
-			return
-		end
-
-		State.BananaApplying = false
-		SetBananaStatus(true)
-		SetStatus("BANANA • ON")
-	end)
-end
-
-SetConnection(Connections.Global, "BananaDescendant", workspace.DescendantAdded:Connect(function(object)
-	if not State.Alive or not Config.BANANA_MODE or State.BananaApplying then
-		return
-	end
-
-	pcall(function()
-		local isPlayerCharacter = State.Character
-			and object:IsDescendantOf(State.Character)
-
-		if isPlayerCharacter then
-			return
-		end
-
-		if object:IsA("ParticleEmitter")
-			or object:IsA("Trail")
-			or object:IsA("Beam")
-			or object:IsA("Smoke")
-			or object:IsA("Fire")
-			or object:IsA("Sparkles")
-			then
-			BananaSet(object, "Enabled", false)
-		elseif object:IsA("Highlight") and Config.BANANA_DISABLE_HIGHLIGHTS then
-			BananaSet(object, "Enabled", false)
-		elseif object:IsA("BasePart") then
-			BananaSet(object, "CastShadow", false)
-			BananaSet(object, "Reflectance", 0)
-			if Config.BANANA_MATERIAL then
-				BananaSet(object, "Material", Enum.Material.SmoothPlastic)
-			end
-			if object:IsA("MeshPart") then
-				BananaSet(object, "RenderFidelity", Enum.RenderFidelity.Performance)
-			end
-		elseif Config.BANANA_HIDE_TEXTURES
-			and (object:IsA("Decal") or object:IsA("Texture")) then
-			BananaSet(object, "Transparency", 1)
-		end
-	end)
-end))
-
-SetConnection(Connections.Gui, "Banana", BananaButton.Activated:Connect(function()
-	if not State.Alive or State.BananaApplying then
-		return
-	end
-
-	if Config.BANANA_MODE then
-		RestoreBanana()
-	else
-		ApplyBanana()
-	end
 end))
 
 -- =========================================================
@@ -1500,7 +1229,7 @@ local function OptimizeGraphics()
 	end
 
 	if Config.OPTIMIZE_ONCE and State.Optimized then
-		SetStatus("JA OTIMIZADO")
+		SetStatus("JA OTIMIZADO 25%")
 		task.delay(0.8, function()
 			if State.Alive then
 				RefreshStatus()
@@ -1514,83 +1243,148 @@ local function OptimizeGraphics()
 	State.OptimizeToken += 1
 
 	local optimizeToken = State.OptimizeToken
+	local reduction = math.clamp(Config.OPTIMIZATION_STRENGTH, 0, 0.75)
+	local keepFactor = 1 - reduction
 
 	OptimizeButton.Text = "OTIMIZANDO..."
-	SetStatus("OTIMIZANDO...")
+	SetStatus("OTIMIZANDO 25%...")
 
+	-- ---------------------------------------------------------
+	-- Qualidade: cai apenas 1 nivel a partir da qualidade atual.
+	-- Niveis baixos (1-4) ficam intocados para nao degradar mais.
+	-- Automatic tambem fica intocado.
+	-- ---------------------------------------------------------
 	pcall(function()
 		local settings = UserSettings():GetService("UserGameSettings")
-		settings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-	end)
+		local saved = settings.SavedQualityLevel
+		local currentName = tostring(saved)
+		local currentLevel = tonumber(currentName:match("(%d+)$"))
 
-	pcall(function()
-		for _, effect in ipairs(Lighting:GetChildren()) do
-			if effect:IsA("BloomEffect")
-				or effect:IsA("BlurEffect")
-				or effect:IsA("ColorCorrectionEffect")
-				or effect:IsA("SunRaysEffect")
-				or effect:IsA("DepthOfFieldEffect")
-				or effect:IsA("Atmosphere")
-			then
-				if effect:IsA("Atmosphere") then
-					effect.Density = 0
-					effect.Haze = 0
-					effect.Glare = 0
-				else
-					effect.Enabled = false
+		if currentLevel and currentLevel >= Config.MIN_QUALITY_LEVEL then
+			local drop = math.max(0, math.floor(Config.QUALITY_DROP_LEVELS))
+			local target = math.max(
+				Config.MIN_QUALITY_LEVEL,
+				currentLevel - drop
+			)
+
+			if target < currentLevel then
+				local targetEnum = Enum.SavedQualitySetting["QualityLevel" .. tostring(target)]
+				if targetEnum then
+					settings.SavedQualityLevel = targetEnum
 				end
 			end
 		end
 	end)
 
+	-- ---------------------------------------------------------
+	-- Pos-processamento leve: remove apenas Blur e DepthOfField.
+	-- Bloom, ColorCorrection, SunRays e Atmosphere permanecem.
+	-- ---------------------------------------------------------
 	pcall(function()
-		workspace.Terrain.Decoration = false
-	end)
-
-	task.spawn(function()
-		local objects = {}
-
-		local ok = pcall(function()
-			objects = workspace:GetDescendants()
-		end)
-
-		if not ok then
-			State.Optimizing = false
-			OptimizeButton.Text = "OTIMIZA"
-			RefreshStatus()
-			return
-		end
-
-		local count = 0
-
-		for _, object in ipairs(objects) do
+		for _, effect in ipairs(Lighting:GetChildren()) do
 			if not State.Alive or State.OptimizeToken ~= optimizeToken then
 				return
 			end
 
+			if effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect") then
+				pcall(function()
+					effect.Enabled = false
+				end)
+			end
+		end
+	end)
+
+	-- ---------------------------------------------------------
+	-- Varredura incremental.
+	-- Em vez de GetDescendants() gerar uma lista enorme de uma vez,
+	-- percorremos a hierarquia em pequenas fatias de tempo. Isso
+	-- reduz o pico de CPU e a chance de uma microtravada durante o
+	-- proprio processo de otimizacao.
+	-- ---------------------------------------------------------
+	task.spawn(function()
+		local stack = {workspace}
+		local changed = 0
+		local sliceStart = os.clock()
+		local budget = math.clamp(
+			tonumber(Config.OPTIMIZE_FRAME_BUDGET) or 0.0025,
+			0.0005,
+			0.008
+		)
+
+		local function ProcessObject(object)
+			if not object then
+				return
+			end
+
 			pcall(function()
+				-- Particulas: -25% na taxa, mantendo o efeito ligado.
 				if object:IsA("ParticleEmitter") then
-					object.Enabled = false
+					local rate = object.Rate
+					if IsFiniteNumber(rate) and rate > 0 then
+						object.Rate = math.max(0, rate * keepFactor)
+						changed += 1
+					end
+
+				-- Trails: -25% no tempo de vida visual.
 				elseif object:IsA("Trail") then
-					object.Enabled = false
-				elseif object:IsA("Beam") then
-					object.Enabled = false
+					local lifetime = object.Lifetime
+					if IsFiniteNumber(lifetime) and lifetime > 0 then
+						object.Lifetime = math.max(0.05, lifetime * keepFactor)
+						changed += 1
+					end
+
+				-- Smoke: pequena reducao de opacidade e tamanho.
 				elseif object:IsA("Smoke") then
-					object.Enabled = false
+					if IsFiniteNumber(object.Opacity) then
+						object.Opacity = math.clamp(object.Opacity * keepFactor, 0, 1)
+					end
+					if IsFiniteNumber(object.Size) then
+						object.Size = math.max(0.1, object.Size * (1 - reduction * 0.5))
+					end
+					changed += 1
+
+				-- Fire: pequena reducao de tamanho e calor.
 				elseif object:IsA("Fire") then
-					object.Enabled = false
-				elseif object:IsA("Sparkles") then
-					object.Enabled = false
-				elseif object:IsA("BasePart") then
-					object.CastShadow = false
+					if IsFiniteNumber(object.Size) then
+						object.Size = math.max(0.1, object.Size * (1 - reduction * 0.5))
+					end
+					if IsFiniteNumber(object.Heat) then
+						object.Heat = object.Heat * keepFactor
+					end
+					changed += 1
+
+				-- Sparkles, Beams, materiais, texturas e sombras: intocados.
 				end
 			end)
+		end
 
-			count += 1
+		while #stack > 0 do
+			if not State.Alive or State.OptimizeToken ~= optimizeToken then
+				return
+			end
 
-			if count >= Config.OPTIMIZE_BATCH then
-				count = 0
-				task.wait(Config.OPTIMIZE_DELAY)
+			local parent = stack[#stack]
+			stack[#stack] = nil
+
+			local children
+			local ok = pcall(function()
+				children = parent:GetChildren()
+			end)
+
+			if ok and children then
+				for _, object in ipairs(children) do
+					if not State.Alive or State.OptimizeToken ~= optimizeToken then
+						return
+					end
+
+					ProcessObject(object)
+					stack[#stack + 1] = object
+
+					if os.clock() - sliceStart >= budget then
+						sliceStart = os.clock()
+						RunService.Heartbeat:Wait()
+					end
+				end
 			end
 		end
 
@@ -1600,8 +1394,14 @@ local function OptimizeGraphics()
 
 		State.Optimizing = false
 		State.Optimized = true
-		OptimizeButton.Text = "OTIMIZADO"
-		RefreshStatus()
+		OptimizeButton.Text = "OTIMIZADO 25%"
+		SetStatus("OTIMIZADO 25% • " .. tostring(changed) .. " EFEITOS")
+
+		task.delay(1.5, function()
+			if State.Alive then
+				RefreshStatus()
+			end
+		end)
 	end)
 end
 
@@ -1899,9 +1699,6 @@ local function Cleanup(reason)
 	State.CleaningUp = true
 	State.Alive = false
 	State.OptimizeToken += 1
-	State.BananaToken += 1
-	State.Banana_MODE = false
-	Config.BANANA_MODE = false
 	State.Dragging = false
 
 	local humanoid = State.Humanoid
@@ -1918,16 +1715,6 @@ local function Cleanup(reason)
 
 	DisconnectAll()
 
-	if next(State.BananaChanged) ~= nil then
-		for _, entry in pairs(State.BananaChanged) do
-			if entry.Object and entry.Object.Parent then
-				pcall(function()
-					entry.Object[entry.Property] = entry.Value
-				end)
-			end
-		end
-		State.BananaChanged = {}
-	end
 
 	if ScreenGui then
 		pcall(function()
@@ -1968,7 +1755,7 @@ end
 
 RefreshStatus()
 
-Debug("Speed Ultra V7.5 iniciado.")
+Debug("Speed Ultra V7.7 iniciado.")
 
 -- =========================================================
 -- FIM
