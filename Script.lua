@@ -1,15 +1,16 @@
 --// =========================================================
---// SPEED ULTRA V6.1
---// OTIMIZADO + CORRIGIDO
+--// SPEED ULTRA V7.1
+--// CARRY ENGINE • CORREÇÃO COMPLETA
 --//
---// FOCO:
---// • baixo custo
---// • recuperação segura
---// • controle de estado
---// • respawn robusto
---// • WalkSpeed como modo principal
---// • Hybrid opcional
---// • limpeza correta
+--// OBJETIVO:
+--// • velocidade configurável
+--// • suporte a estado de carregamento
+--// • detector de Carry genérico
+--// • suporte a celular
+--// • recuperação de respawn
+--// • proteção contra conexões duplicadas
+--// • modo WalkSpeed leve
+--// • modo Hybrid opcional
 --//
 --// PROJETO DE TESTE
 --// NÃO IMPLEMENTA BYPASS / ANTI-CHEAT
@@ -32,12 +33,13 @@ task.wait(0.15)
 --// =========================================================
 
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CollectionService = game:GetService("CollectionService")
 
 
 --// =========================================================
---// CLIENT CHECK
+--// CLIENT
 --// =========================================================
 
 if not RunService:IsClient() then
@@ -50,10 +52,11 @@ if not Player then
 	return
 end
 
-local PlayerGui = Player:WaitForChild(
-	"PlayerGui",
-	30
-)
+local PlayerGui =
+	Player:WaitForChild(
+		"PlayerGui",
+		30
+	)
 
 if not PlayerGui then
 	return
@@ -66,205 +69,131 @@ end
 
 local Config = {
 
-	-- Velocidade
+	--// ---------------------------------------------
+	--// VELOCIDADE
+	--// ---------------------------------------------
+
 	DEFAULT_SPEED = 255,
+	CARRY_SPEED = 255,
+
 	MIN_SPEED = 0,
 	MAX_SPEED = 1000,
 
-	-- Movimento
+
+	--// ---------------------------------------------
+	--// MOVIMENTO
+	--// ---------------------------------------------
 	--
-	-- WalkSpeed:
-	-- caminho mais leve
+	-- WalkSpeed = caminho mais leve
+	-- Hybrid    = WalkSpeed + assistência física
 	--
-	-- Hybrid:
-	-- WalkSpeed + ajuste físico
-	--
+
 	MOVEMENT_MODE = "WalkSpeed",
 
-	-- Física Hybrid
+
+	--// ---------------------------------------------
+	--// FÍSICA HYBRID
+	--// ---------------------------------------------
+
 	ACCELERATION = 55,
 	DECELERATION = 16,
 
 	MAX_HORIZONTAL_VELOCITY = 1500,
 	MAX_DELTA_TIME = 0.10,
 
-	-- Watchdog
+
+	--// ---------------------------------------------
+	--// WATCHDOG
+	--// ---------------------------------------------
+
 	WATCHDOG_INTERVAL = 0.75,
 
-	-- Recuperação do Watchdog
+
+	--// ---------------------------------------------
+	--// RECUPERAÇÃO
+	--// ---------------------------------------------
+
 	RECOVERY_WINDOW = 30,
 	MAX_RECOVERIES = 6,
 	RECOVERY_COOLDOWN = 1,
 
-	-- Proteção
+
+	--// ---------------------------------------------
+	--// PROTEÇÃO
+	--// ---------------------------------------------
+
 	LOCK_WALKSPEED = true,
 
-	-- Recurso experimental.
-	-- Mantido desligado por padrão.
-	ENABLE_OBJECT_PHYSICS = false,
 
-	-- GUI
-	GUI_NAME = "SpeedUltraV61_2026",
+	--// ---------------------------------------------
+	--// CARRY DETECTOR
+	--// ---------------------------------------------
 
-	-- Diagnóstico
-	DIAGNOSTICS = false,
+	DETECT_TOOLS = true,
+
+	DETECT_ATTRIBUTES = true,
+
+	DETECT_TAGS = true,
+
+	DETECT_CONSTRAINTS = true,
+
+
+	--// ---------------------------------------------
+	--// ATRIBUTOS CONSIDERADOS COMO CARRY
+	--// ---------------------------------------------
+
+	CARRY_ATTRIBUTES = {
+
+		"Carrying",
+		"IsCarrying",
+		"HasCarry",
+		"CarryingObject",
+		"IsCarryingObject",
+		"Holding",
+		"IsHolding",
+		"HasObject",
+
+	},
+
+
+	--// ---------------------------------------------
+	--// TAGS CONSIDERADAS COMO CARRY
+	// ---------------------------------------------
+
+	CARRY_TAGS = {
+
+		"Carried",
+		"Carry",
+		"CarryObject",
+		"Carrying",
+		"Held",
+		"HeavyObject",
+
+	},
+
+
+	--// ---------------------------------------------
+	--// GUI
+	// ---------------------------------------------
+
+	GUI_NAME =
+		"SpeedUltraV71_2026",
+
+
+	--// ---------------------------------------------
+	--// DEBUG
+	// ---------------------------------------------
+
 	DEBUG = false,
+
+	DIAGNOSTICS = false,
+
 }
 
 
 --// =========================================================
---// VALIDAÇÃO DA CONFIG
---// =========================================================
-
-local function IsFiniteNumber(value)
-
-	return
-		type(value) == "number"
-		and value == value
-		and value ~= math.huge
-		and value ~= -math.huge
-
-end
-
-
-local function NormalizeSpeed(value)
-
-	if not IsFiniteNumber(value) then
-		return nil
-	end
-
-	return math.clamp(
-		value,
-		Config.MIN_SPEED,
-		Config.MAX_SPEED
-	)
-
-end
-
-
-local function ValidateConfig()
-
-	if not IsFiniteNumber(
-		Config.DEFAULT_SPEED
-	) then
-
-		Config.DEFAULT_SPEED = 255
-
-	end
-
-	if not IsFiniteNumber(
-		Config.MIN_SPEED
-	) then
-
-		Config.MIN_SPEED = 0
-
-	end
-
-	if not IsFiniteNumber(
-		Config.MAX_SPEED
-	) then
-
-		Config.MAX_SPEED = 1000
-
-	end
-
-	if Config.MAX_SPEED
-		< Config.MIN_SPEED then
-
-		Config.MAX_SPEED =
-			Config.MIN_SPEED + 1
-
-	end
-
-	Config.DEFAULT_SPEED =
-		NormalizeSpeed(
-			Config.DEFAULT_SPEED
-		)
-		or Config.MIN_SPEED
-
-	Config.ACCELERATION =
-		math.max(
-			0.01,
-			tonumber(
-				Config.ACCELERATION
-			) or 55
-		)
-
-	Config.DECELERATION =
-		math.max(
-			0.01,
-			tonumber(
-				Config.DECELERATION
-			) or 16
-		)
-
-	Config.MAX_HORIZONTAL_VELOCITY =
-		math.max(
-			Config.MAX_SPEED,
-			tonumber(
-				Config.MAX_HORIZONTAL_VELOCITY
-			) or 1500
-		)
-
-	Config.MAX_DELTA_TIME =
-		math.clamp(
-			tonumber(
-				Config.MAX_DELTA_TIME
-			) or 0.10,
-			0.01,
-			0.25
-		)
-
-	Config.WATCHDOG_INTERVAL =
-		math.max(
-			0.20,
-			tonumber(
-				Config.WATCHDOG_INTERVAL
-			) or 0.75
-		)
-
-	Config.RECOVERY_WINDOW =
-		math.max(
-			5,
-			tonumber(
-				Config.RECOVERY_WINDOW
-			) or 30
-		)
-
-	Config.MAX_RECOVERIES =
-		math.max(
-			1,
-			math.floor(
-				tonumber(
-					Config.MAX_RECOVERIES
-				) or 6
-			)
-		)
-
-	Config.RECOVERY_COOLDOWN =
-		math.max(
-			0.1,
-			tonumber(
-				Config.RECOVERY_COOLDOWN
-			) or 1
-		)
-
-	if Config.MOVEMENT_MODE ~= "WalkSpeed"
-		and Config.MOVEMENT_MODE ~= "Hybrid" then
-
-		Config.MOVEMENT_MODE = "WalkSpeed"
-
-	end
-
-end
-
-
-ValidateConfig()
-
-
---// =========================================================
---// ESTADO CENTRAL
---// =========================================================
+--// ESTADO
+// =========================================================
 
 local State = {
 
@@ -272,42 +201,71 @@ local State = {
 
 	Enabled = true,
 
+
+	--// Velocidade configurada pelo usuário.
 	TargetSpeed =
 		Config.DEFAULT_SPEED,
 
+
+	--// Estado de Carry.
+	Carrying = false,
+
+	CarriedObject = nil,
+
+	CarryScanPending = false,
+
+
+	--// Personagem.
 	Character = nil,
+
 	Humanoid = nil,
+
 	RootPart = nil,
 
-	-- Controle de geração
-	CharacterGeneration = 0,
-	PreparationToken = 0,
 
-	-- Impede preparação dupla
-	Preparing = false,
-
-	-- Velocidade original do Humanoid
+	--// Velocidade original.
 	OriginalWalkSpeed = nil,
 
-	-- Watchdog
+
+	--// Geração do personagem.
+	CharacterGeneration = 0,
+
+	PreparationToken = 0,
+
+	Preparing = false,
+
+
+	--// Recuperação.
 	RecoveryWindowStart = 0,
+
 	RecoveryCount = 0,
+
 	LastRecovery = 0,
 
-	-- Diagnóstico
+
+	--// Diagnóstico.
 	LastSpeedApply = 0,
+
 	LastPhysicsStep = 0,
 
 	PhysicsWrites = 0,
+
 	InvalidVelocityCount = 0,
+
 	MispredictionCount = 0,
 
-	-- GUI
+
+	--// Drag.
 	Dragging = false,
+
 	DragStart = Vector2.zero,
+
 	PanelStart = Vector2.zero,
 
+
+	--// Camera.
 	Camera = nil,
+
 }
 
 
@@ -335,7 +293,7 @@ local function Debug(...)
 	if Config.DEBUG then
 
 		warn(
-			"[SPEED ULTRA V6.1]",
+			"[SPEED ULTRA V7.1]",
 			...
 		)
 
@@ -345,12 +303,10 @@ end
 
 
 --// =========================================================
---// CONNECTION MANAGER
+--// CONEXÃO SEGURA
 --// =========================================================
 
-local function Disconnect(
-	connection
-)
+local function Disconnect(connection)
 
 	if not connection then
 		return
@@ -365,16 +321,12 @@ local function Disconnect(
 end
 
 
-local function DisconnectGroup(
-	group
-)
+local function DisconnectGroup(group)
 
 	for name, connection in
 		pairs(group) do
 
-		Disconnect(
-			connection
-		)
+		Disconnect(connection)
 
 		group[name] = nil
 
@@ -400,17 +352,28 @@ end
 
 
 --// =========================================================
---// VECTOR VALIDATION
+--// SEGURANÇA NUMÉRICA
 --// =========================================================
 
-local function IsFiniteVector3(
-	value
-)
+local function IsFiniteNumber(value)
+
+	return
+		type(value) == "number"
+		and value == value
+		and value ~= math.huge
+		and value ~= -math.huge
+
+end
+
+
+local function IsFiniteVector3(value)
 
 	if typeof(value)
-		~= "Vector3" then
+		~= "Vector3"
+	then
 
 		return false
+
 	end
 
 	return
@@ -423,20 +386,153 @@ local function IsFiniteVector3(
 end
 
 
+local function NormalizeSpeed(value)
+
+	if not IsFiniteNumber(value) then
+		return nil
+	end
+
+	return math.clamp(
+		value,
+		Config.MIN_SPEED,
+		Config.MAX_SPEED
+	)
+
+end
+
+
 --// =========================================================
---// GUI DUPLICADA
+--// CONFIG VALIDATION
 --// =========================================================
 
-local oldGui =
+local function ValidateConfig()
+
+	Config.DEFAULT_SPEED =
+		NormalizeSpeed(
+			Config.DEFAULT_SPEED
+		)
+		or 255
+
+
+	Config.CARRY_SPEED =
+		NormalizeSpeed(
+			Config.CARRY_SPEED
+		)
+		or Config.DEFAULT_SPEED
+
+
+	Config.ACCELERATION =
+		math.max(
+			0.01,
+			tonumber(
+				Config.ACCELERATION
+			)
+			or 55
+		)
+
+
+	Config.DECELERATION =
+		math.max(
+			0.01,
+			tonumber(
+				Config.DECELERATION
+			)
+			or 16
+		)
+
+
+	Config.MAX_HORIZONTAL_VELOCITY =
+		math.max(
+			Config.MAX_SPEED,
+			tonumber(
+				Config.MAX_HORIZONTAL_VELOCITY
+			)
+			or 1500
+		)
+
+
+	Config.MAX_DELTA_TIME =
+		math.clamp(
+			tonumber(
+				Config.MAX_DELTA_TIME
+			)
+			or 0.10,
+			0.01,
+			0.25
+		)
+
+
+	Config.WATCHDOG_INTERVAL =
+		math.max(
+			0.20,
+			tonumber(
+				Config.WATCHDOG_INTERVAL
+			)
+			or 0.75
+		)
+
+
+	Config.RECOVERY_WINDOW =
+		math.max(
+			5,
+			tonumber(
+				Config.RECOVERY_WINDOW
+			)
+			or 30
+		)
+
+
+	Config.MAX_RECOVERIES =
+		math.max(
+			1,
+			math.floor(
+				tonumber(
+					Config.MAX_RECOVERIES
+				)
+				or 6
+			)
+		)
+
+
+	Config.RECOVERY_COOLDOWN =
+		math.max(
+			0.10,
+			tonumber(
+				Config.RECOVERY_COOLDOWN
+			)
+			or 1
+		)
+
+
+	if Config.MOVEMENT_MODE ~= "WalkSpeed"
+		and Config.MOVEMENT_MODE ~= "Hybrid"
+	then
+
+		Config.MOVEMENT_MODE =
+			"WalkSpeed"
+
+	end
+
+end
+
+
+ValidateConfig()
+
+
+--// =========================================================
+--// GUI EXISTENTE
+// =========================================================
+
+local OldGui =
 	PlayerGui:FindFirstChild(
 		Config.GUI_NAME
 	)
 
-if oldGui then
+if OldGui then
 
 	pcall(function()
 
-		oldGui:Destroy()
+		OldGui:Destroy()
 
 	end)
 
@@ -445,7 +541,7 @@ end
 
 --// =========================================================
 --// SCREEN GUI
---// =========================================================
+// =========================================================
 
 local ScreenGui =
 	Instance.new(
@@ -470,7 +566,7 @@ ScreenGui.Parent =
 
 --// =========================================================
 --// FRAME
---// =========================================================
+// =========================================================
 
 local Frame =
 	Instance.new(
@@ -482,8 +578,8 @@ Frame.Name =
 
 Frame.Size =
 	UDim2.fromOffset(
-		210,
-		116
+		215,
+		120
 	)
 
 Frame.Position =
@@ -526,7 +622,7 @@ FrameCorner.Parent =
 
 --// =========================================================
 --// ACCENT
---// =========================================================
+// =========================================================
 
 local Accent =
 	Instance.new(
@@ -557,7 +653,7 @@ Accent.Parent =
 
 --// =========================================================
 --// TITLE
---// =========================================================
+// =========================================================
 
 local Title =
 	Instance.new(
@@ -582,7 +678,7 @@ Title.BackgroundTransparency =
 	1
 
 Title.Text =
-	"⚡ SPEED ULTRA V6.1"
+	"⚡ SPEED ULTRA V7.1"
 
 Title.TextColor3 =
 	Color3.fromRGB(
@@ -609,7 +705,7 @@ Title.Parent =
 
 --// =========================================================
 --// SPEED BOX
---// =========================================================
+// =========================================================
 
 local SpeedBox =
 	Instance.new(
@@ -683,7 +779,7 @@ SpeedCorner.Parent =
 
 --// =========================================================
 --// APPLY BUTTON
---// =========================================================
+// =========================================================
 
 local ApplyButton =
 	Instance.new(
@@ -748,8 +844,8 @@ ApplyCorner.Parent =
 
 
 --// =========================================================
---// TOGGLE BUTTON
---// =========================================================
+--// TOGGLE
+// =========================================================
 
 local Toggle =
 	Instance.new(
@@ -765,7 +861,7 @@ Toggle.Size =
 Toggle.Position =
 	UDim2.fromOffset(
 		10,
-		72
+		73
 	)
 
 Toggle.BackgroundColor3 =
@@ -815,7 +911,7 @@ ToggleCorner.Parent =
 
 --// =========================================================
 --// STATUS
---// =========================================================
+// =========================================================
 
 local Status =
 	Instance.new(
@@ -824,21 +920,21 @@ local Status =
 
 Status.Size =
 	UDim2.fromOffset(
-		110,
+		115,
 		27
 	)
 
 Status.Position =
 	UDim2.fromOffset(
 		100,
-		72
+		73
 	)
 
 Status.BackgroundTransparency =
 	1
 
 Status.Text =
-	"INICIANDO..."
+	"INICIANDO"
 
 Status.TextColor3 =
 	Color3.fromRGB(
@@ -861,19 +957,18 @@ Status.Parent =
 
 
 --// =========================================================
---// STATUS FUNCTIONS
---// =========================================================
+--// STATUS
+// =========================================================
 
-local function SetStatus(
-	text
-)
+local function SetStatus(text)
 
 	if not State.Alive then
 		return
 	end
 
 	if not Status
-		or not Status.Parent then
+		or not Status.Parent
+	then
 
 		return
 
@@ -898,6 +993,21 @@ local function RefreshStatus()
 		)
 
 		return
+
+	end
+
+	if State.Carrying then
+
+		SetStatus(
+			"CARRY • "
+			.. tostring(
+				Config.CARRY_SPEED
+			)
+
+		)
+
+		return
+
 	end
 
 	if not State.Character then
@@ -907,6 +1017,7 @@ local function RefreshStatus()
 		)
 
 		return
+
 	end
 
 	if not State.Humanoid then
@@ -916,6 +1027,7 @@ local function RefreshStatus()
 		)
 
 		return
+
 	end
 
 	SetStatus(
@@ -929,51 +1041,8 @@ end
 
 
 --// =========================================================
---// CHARACTER VALIDATION
---// =========================================================
-
-local function ValidCharacter(
-	character,
-	generation,
-	token
-)
-
-	if not State.Alive then
-		return false
-	end
-
-	if Player.Character
-		~= character then
-
-		return false
-	end
-
-	if State.Character
-		~= character then
-
-		return false
-	end
-
-	if State.CharacterGeneration
-		~= generation then
-
-		return false
-	end
-
-	if State.PreparationToken
-		~= token then
-
-		return false
-	end
-
-	return true
-
-end
-
-
---// =========================================================
---// RECOVERY CONTROL
---// =========================================================
+--// RECOVERY
+// =========================================================
 
 local function CanRecover()
 
@@ -988,7 +1057,8 @@ local function CanRecover()
 		State.RecoveryWindowStart =
 			now
 
-		State.RecoveryCount = 0
+		State.RecoveryCount =
+			0
 
 	end
 
@@ -1021,19 +1091,60 @@ local function RegisterRecovery()
 		State.RecoveryWindowStart =
 			now
 
-		State.RecoveryCount = 0
+		State.RecoveryCount =
+			0
 
 	end
 
-	State.RecoveryCount += 1
-	State.LastRecovery = now
+	State.RecoveryCount +=
+		1
+
+	State.LastRecovery =
+		now
+
+end
+
+
+--// =========================================================
+--// CHARACTER VALID
+// =========================================================
+
+local function ValidCharacter(
+	character,
+	generation,
+	token
+)
+
+	return
+
+		State.Alive
+
+		and
+
+		Player.Character
+			== character
+
+		and
+
+		State.Character
+			== character
+
+		and
+
+		State.CharacterGeneration
+			== generation
+
+		and
+
+		State.PreparationToken
+			== token
 
 end
 
 
 --// =========================================================
 --// CHARACTER CLEANUP
---// =========================================================
+// =========================================================
 
 local function CleanupCharacter()
 
@@ -1041,19 +1152,35 @@ local function CleanupCharacter()
 		Connections.Character
 	)
 
-	State.Character = nil
-	State.Humanoid = nil
-	State.RootPart = nil
-	State.OriginalWalkSpeed = nil
+	State.Character =
+		nil
+
+	State.Humanoid =
+		nil
+
+	State.RootPart =
+		nil
+
+	State.Carrying =
+		false
+
+	State.CarriedObject =
+		nil
+
+	State.OriginalWalkSpeed =
+		nil
+
+	State.CarryScanPending =
+		false
 
 end
 
 
 --// =========================================================
---// RESTORE ORIGINAL WALKSPEED
---// =========================================================
+--// RESTORE ORIGINAL SPEED
+// =========================================================
 
-local function RestoreOriginalWalkSpeed()
+local function RestoreOriginalSpeed()
 
 	local humanoid =
 		State.Humanoid
@@ -1062,7 +1189,8 @@ local function RestoreOriginalWalkSpeed()
 		State.OriginalWalkSpeed
 
 	if not humanoid
-		or not humanoid.Parent then
+		or not humanoid.Parent
+	then
 
 		return
 
@@ -1087,10 +1215,583 @@ end
 
 
 --// =========================================================
---// APPLY WALKSPEED
+--// CARRY ATTRIBUTE VALUE
+// =========================================================
+
+local function IsCarryAttributeValue(
+	value
+)
+
+	if value == true then
+		return true
+	end
+
+	if typeof(value)
+		== "Instance"
+	then
+
+		return value ~= nil
+
+	end
+
+	if type(value)
+		== "string"
+	then
+
+		return value ~= ""
+
+	end
+
+	if type(value)
+		== "number"
+	then
+
+		return value > 0
+
+	end
+
+	return false
+
+end
+
+
+--// =========================================================
+--// CHECK CARRY ATTRIBUTES
+// =========================================================
+
+local function CheckCarryAttributes(
+	object
+)
+
+	if not Config.DETECT_ATTRIBUTES then
+		return false
+	end
+
+	if not object then
+		return false
+	end
+
+	for _, attributeName in
+		ipairs(
+			Config.CARRY_ATTRIBUTES
+		) do
+
+		local value =
+			object:GetAttribute(
+				attributeName
+			)
+
+		if IsCarryAttributeValue(
+			value
+		) then
+
+			return true
+
+		end
+
+	end
+
+	return false
+
+end
+
+
+--// =========================================================
+--// CHECK CARRY TAGS
+// =========================================================
+
+local function CheckCarryTags(
+	object
+)
+
+	if not Config.DETECT_TAGS then
+		return false
+	end
+
+	if not object then
+		return false
+	end
+
+	for _, tagName in
+		ipairs(
+			Config.CARRY_TAGS
+		) do
+
+		if CollectionService:HasTag(
+			object,
+			tagName
+		) then
+
+			return true
+
+		end
+
+	end
+
+	return false
+
+end
+
+
+--// =========================================================
+--// CHECK TOOL
+// =========================================================
+
+local function CheckCarryTool(
+	character
+)
+
+	if not Config.DETECT_TOOLS then
+		return false, nil
+	end
+
+	if not character then
+		return false, nil
+	end
+
+	for _, child in
+		ipairs(
+			character:GetChildren()
+		) do
+
+		if child:IsA("Tool") then
+
+			return true, child
+
+		end
+
+	end
+
+	return false, nil
+
+end
+
+
+--// =========================================================
+--// CHECK CONSTRAINT PART
+// =========================================================
+
+local function GetConstraintPart(
+	attachment
+)
+
+	if not attachment then
+		return nil
+	end
+
+	if not attachment:IsA(
+		"Attachment"
+	) then
+
+		return nil
+
+	end
+
+	local parent =
+		attachment.Parent
+
+	if parent
+		and parent:IsA("BasePart")
+	then
+
+		return parent
+
+	end
+
+	return nil
+
+end
+
+
+--// =========================================================
+--// CHECK EXTERNAL CONSTRAINT
+// =========================================================
+
+local function CheckExternalConstraints(
+	character
+)
+
+	if not Config.DETECT_CONSTRAINTS then
+		return false, nil
+	end
+
+	if not character then
+		return false, nil
+	end
+
+	--// -----------------------------------------------------
+	--// Primeiro: constraints clássicos com Part0 / Part1.
+	// -----------------------------------------------------
+
+	for _, object in
+		ipairs(
+			character:GetDescendants()
+		) do
+
+		if object:IsA(
+			"WeldConstraint"
+		) then
+
+			local p0 =
+				object.Part0
+
+			local p1 =
+				object.Part1
+
+			if p0 and p1 then
+
+				local inside0 =
+					p0:IsDescendantOf(
+						character
+					)
+
+				local inside1 =
+					p1:IsDescendantOf(
+						character
+					)
+
+				if inside0 ~= inside1 then
+
+					if inside0 then
+						return true, p1
+					else
+						return true, p0
+					end
+
+				end
+
+			end
+
+
+		elseif object:IsA(
+			"Weld"
+		)
+		then
+
+			local p0 =
+				object.Part0
+
+			local p1 =
+				object.Part1
+
+			if p0 and p1 then
+
+				local inside0 =
+					p0:IsDescendantOf(
+						character
+					)
+
+				local inside1 =
+					p1:IsDescendantOf(
+						character
+					)
+
+				if inside0 ~= inside1 then
+
+					if inside0 then
+						return true, p1
+					else
+						return true, p0
+					end
+
+				end
+
+			end
+
+
+		elseif object:IsA(
+			"Motor6D"
+		)
+		then
+
+			local p0 =
+				object.Part0
+
+			local p1 =
+				object.Part1
+
+			if p0 and p1 then
+
+				local inside0 =
+					p0:IsDescendantOf(
+						character
+					)
+
+				local inside1 =
+					p1:IsDescendantOf(
+						character
+					)
+
+				if inside0 ~= inside1 then
+
+					if inside0 then
+						return true, p1
+					else
+						return true, p0
+					end
+
+				end
+
+			end
+
+		end
+
+	end
+
+
+	--// -----------------------------------------------------
+	--// Segundo: constraints baseados em Attachment.
+	// -----------------------------------------------------
+
+	for _, object in
+		ipairs(
+			character:GetDescendants()
+		) do
+
+		local a0
+		local a1
+
+		if object:IsA(
+			"AlignPosition"
+		)
+		or object:IsA(
+			"AlignOrientation"
+		)
+		or object:IsA(
+			"RopeConstraint"
+		)
+		or object:IsA(
+			"RodConstraint"
+		)
+		or object:IsA(
+			"SpringConstraint"
+		)
+		or object:IsA(
+			"BallSocketConstraint"
+		)
+		or object:IsA(
+			"HingeConstraint"
+		)
+		or object:IsA(
+			"CylindricalConstraint"
+		)
+		or object:IsA(
+			"PrismaticConstraint"
+		)
+		or object:IsA(
+			"UniversalConstraint"
+		)
+		then
+
+			a0 =
+				object.Attachment0
+
+			a1 =
+				object.Attachment1
+
+		end
+
+		if a0 and a1 then
+
+			local p0 =
+				GetConstraintPart(
+					a0
+				)
+
+			local p1 =
+				GetConstraintPart(
+					a1
+				)
+
+			if p0 and p1 then
+
+				local inside0 =
+					p0:IsDescendantOf(
+						character
+					)
+
+				local inside1 =
+					p1:IsDescendantOf(
+						character
+					)
+
+				if inside0 ~= inside1 then
+
+					if inside0 then
+						return true, p1
+					else
+						return true, p0
+					end
+
+				end
+
+			end
+
+		end
+
+	end
+
+	return false, nil
+
+end
+
+
+--// =========================================================
+--// CARRY DETECTOR
 --// =========================================================
 
-local function ApplyWalkSpeed()
+local function DetectCarry()
+
+	local character =
+		State.Character
+
+	if not character then
+
+		return false, nil
+
+	end
+
+
+	--// -----------------------------------------------------
+	--// ATTRIBUTE DO CHARACTER
+	// -----------------------------------------------------
+
+	if CheckCarryAttributes(
+		character
+	) then
+
+		return true, character
+
+	end
+
+
+	--// -----------------------------------------------------
+	--// TAG DO CHARACTER
+	// -----------------------------------------------------
+
+	if CheckCarryTags(
+		character
+	) then
+
+		return true, character
+
+	end
+
+
+	--// -----------------------------------------------------
+	--// TOOL
+	// -----------------------------------------------------
+
+	local toolFound,
+		tool =
+		CheckCarryTool(
+			character
+		)
+
+	if toolFound then
+
+		return true, tool
+
+	end
+
+
+	--// -----------------------------------------------------
+	--// OBJETOS DESCENDENTES
+	// -----------------------------------------------------
+
+	if Config.DETECT_ATTRIBUTES
+		or Config.DETECT_TAGS
+	then
+
+		for _, object in
+			ipairs(
+				character:GetDescendants()
+			) do
+
+			if object == character then
+				continue
+			end
+
+			if Config.DETECT_ATTRIBUTES
+				and CheckCarryAttributes(
+					object
+				)
+			then
+
+				return true, object
+
+			end
+
+			if Config.DETECT_TAGS
+				and CheckCarryTags(
+					object
+				)
+			then
+
+				return true, object
+
+			end
+
+		end
+
+	end
+
+
+	--// -----------------------------------------------------
+	--// CONSTRAINTS
+	// -----------------------------------------------------
+
+	local constraintFound,
+		externalObject =
+		CheckExternalConstraints(
+			character
+		)
+
+	if constraintFound then
+
+		return true,
+			externalObject
+
+	end
+
+
+	return false, nil
+
+end
+
+
+--// =========================================================
+--// DESIRED SPEED
+// =========================================================
+
+local function GetDesiredSpeed()
+
+	if State.Carrying then
+
+		return
+			NormalizeSpeed(
+				Config.CARRY_SPEED
+			)
+			or
+			State.TargetSpeed
+
+	end
+
+	return
+		NormalizeSpeed(
+			State.TargetSpeed
+		)
+		or
+		Config.DEFAULT_SPEED
+
+end
+
+
+--// =========================================================
+--// APPLY SPEED
+// =========================================================
+
+local function ApplySpeed()
 
 	if not State.Alive then
 		return false
@@ -1100,30 +1801,35 @@ local function ApplyWalkSpeed()
 		return false
 	end
 
+	if not Config.LOCK_WALKSPEED then
+		return false
+	end
+
 	local humanoid =
 		State.Humanoid
 
 	if not humanoid
-		or not humanoid.Parent then
+		or not humanoid.Parent
+	then
 
 		return false
+
 	end
 
 	if humanoid.Health <= 0 then
 		return false
 	end
 
-	local speed =
-		NormalizeSpeed(
-			State.TargetSpeed
-		)
+	local desired =
+		GetDesiredSpeed()
 
-	if not speed then
+	if not desired then
 		return false
 	end
 
 	if humanoid.WalkSpeed
-		== speed then
+		== desired
+	then
 
 		return true
 
@@ -1133,7 +1839,7 @@ local function ApplyWalkSpeed()
 		pcall(function()
 
 			humanoid.WalkSpeed =
-				speed
+				desired
 
 		end)
 
@@ -1150,12 +1856,97 @@ end
 
 
 --// =========================================================
---// PREPARE CHARACTER
---//
---// isRecovery:
---// true  = reparação detectada pelo watchdog
---// false = nascimento normal / inicialização
+--// UPDATE CARRY
+// =========================================================
+
+local function UpdateCarryState()
+
+	if not State.Alive then
+		return
+	end
+
+	if not State.Character then
+		return
+	end
+
+	local carrying,
+		object =
+		DetectCarry()
+
+	local changed =
+		carrying
+		~= State.Carrying
+
+	State.Carrying =
+		carrying
+
+	State.CarriedObject =
+		object
+
+	if changed then
+
+		Debug(
+			"Carry:",
+			carrying,
+			"Objeto:",
+			object
+		)
+
+	end
+
+	if State.Enabled then
+
+		ApplySpeed()
+
+	end
+
+	RefreshStatus()
+
+end
+
+
 --// =========================================================
+--// SCHEDULE CARRY SCAN
+// =========================================================
+--
+-- Evita dezenas de GetDescendants()
+-- quando vários objetos entram juntos.
+-- =========================================================
+
+local function ScheduleCarryScan()
+
+	if not State.Alive then
+		return
+	end
+
+	if State.CarryScanPending then
+		return
+	end
+
+	State.CarryScanPending =
+		true
+
+	task.defer(
+		function()
+
+			State.CarryScanPending =
+				false
+
+			if not State.Alive then
+				return
+			end
+
+			UpdateCarryState()
+
+		end
+	)
+
+end
+
+
+--// =========================================================
+--// PREPARE CHARACTER
+// =========================================================
 
 local function PrepareCharacter(
 	character,
@@ -1174,18 +1965,8 @@ local function PrepareCharacter(
 		return
 	end
 
-	-- Não reconstruir um personagem que já está correto.
-	if
-		not isRecovery
-		and character == State.Character
-		and State.Humanoid
-		and State.RootPart
-	then
-
-		return
-
-	end
-
+	--// Recuperação só usa o budget quando
+	--// realmente foi necessário reconstruir.
 	if isRecovery then
 
 		if not CanRecover() then
@@ -1202,12 +1983,14 @@ local function PrepareCharacter(
 
 	end
 
-	-- IMPORTANTE:
-	-- o estado Preparing fica TRUE antes do cleanup.
-	State.Preparing = true
+	State.Preparing =
+		true
 
-	State.CharacterGeneration += 1
-	State.PreparationToken += 1
+	State.CharacterGeneration +=
+		1
+
+	State.PreparationToken +=
+		1
 
 	local generation =
 		State.CharacterGeneration
@@ -1215,9 +1998,33 @@ local function PrepareCharacter(
 	local token =
 		State.PreparationToken
 
-	-- Cleanup NÃO altera Preparing.
-	CleanupCharacter()
+	--// Limpeza antiga.
+	DisconnectGroup(
+		Connections.Character
+	)
 
+	State.Character =
+		nil
+
+	State.Humanoid =
+		nil
+
+	State.RootPart =
+		nil
+
+	State.Carrying =
+		false
+
+	State.CarriedObject =
+		nil
+
+	State.OriginalWalkSpeed =
+		nil
+
+	State.CarryScanPending =
+		false
+
+	--// Novo personagem.
 	State.Character =
 		character
 
@@ -1225,9 +2032,10 @@ local function PrepareCharacter(
 		"CARREGANDO..."
 	)
 
+
 	--// -----------------------------------------------------
 	--// HUMANOID
-	--// -----------------------------------------------------
+	// -----------------------------------------------------
 
 	local humanoid =
 		character:WaitForChild(
@@ -1241,7 +2049,8 @@ local function PrepareCharacter(
 		token
 	) then
 
-		State.Preparing = false
+		State.Preparing =
+			false
 
 		return
 
@@ -1249,7 +2058,8 @@ local function PrepareCharacter(
 
 	if not humanoid then
 
-		State.Preparing = false
+		State.Preparing =
+			false
 
 		SetStatus(
 			"ERRO • HUMANOID"
@@ -1259,13 +2069,15 @@ local function PrepareCharacter(
 
 	end
 
-	-- Salva a velocidade original ANTES de alterar.
+	-- Salva a velocidade original somente
+	-- uma vez para este personagem.
 	State.OriginalWalkSpeed =
 		humanoid.WalkSpeed
 
+
 	--// -----------------------------------------------------
-	--// ROOTPART
-	--// -----------------------------------------------------
+	--// ROOT
+	// -----------------------------------------------------
 
 	local root =
 		character:WaitForChild(
@@ -1279,7 +2091,8 @@ local function PrepareCharacter(
 		token
 	) then
 
-		State.Preparing = false
+		State.Preparing =
+			false
 
 		return
 
@@ -1287,7 +2100,8 @@ local function PrepareCharacter(
 
 	if not root then
 
-		State.Preparing = false
+		State.Preparing =
+			false
 
 		SetStatus(
 			"ERRO • ROOTPART"
@@ -1303,9 +2117,88 @@ local function PrepareCharacter(
 	State.RootPart =
 		root
 
+
 	--// -----------------------------------------------------
-	--// WALKSPEED PROPERTY WATCH
+	// CARRY EVENTS
+	// -----------------------------------------------------
+
+	SetConnection(
+		Connections.Character,
+		"ChildAdded",
+
+		character.ChildAdded:Connect(
+			function()
+
+				ScheduleCarryScan()
+
+			end
+		)
+	)
+
+
+	SetConnection(
+		Connections.Character,
+		"ChildRemoved",
+
+		character.ChildRemoved:Connect(
+			function()
+
+				ScheduleCarryScan()
+
+			end
+		)
+	)
+
+
+	SetConnection(
+		Connections.Character,
+		"DescendantAdded",
+
+		character.DescendantAdded:Connect(
+			function()
+
+				ScheduleCarryScan()
+
+			end
+		)
+	)
+
+
+	SetConnection(
+		Connections.Character,
+		"DescendantRemoving",
+
+		character.DescendantRemoving:Connect(
+			function()
+
+				ScheduleCarryScan()
+
+			end
+		)
+	)
+
+
 	--// -----------------------------------------------------
+	// ATTRIBUTE CHANGE
+	// -----------------------------------------------------
+
+	SetConnection(
+		Connections.Character,
+		"AttributeChanged",
+
+		character.AttributeChanged:Connect(
+			function()
+
+				ScheduleCarryScan()
+
+			end
+		)
+	)
+
+
+	--// -----------------------------------------------------
+	// WALKSPEED GUARD
+	// -----------------------------------------------------
 
 	SetConnection(
 		Connections.Character,
@@ -1342,20 +2235,16 @@ local function PrepareCharacter(
 					return
 				end
 
-				if humanoid.WalkSpeed
-					~= State.TargetSpeed then
-
-					ApplyWalkSpeed()
-
-				end
+				ApplySpeed()
 
 			end
 		)
 	)
 
+
 	--// -----------------------------------------------------
-	--// DEATH
-	--// -----------------------------------------------------
+	// MORTE
+	// -----------------------------------------------------
 
 	SetConnection(
 		Connections.Character,
@@ -1364,87 +2253,49 @@ local function PrepareCharacter(
 		humanoid.Died:Connect(
 			function()
 
-				if State.Alive then
-
-					SetStatus(
-						"MORTO • AGUARDANDO"
-					)
-
+				if not State.Alive then
+					return
 				end
+
+				State.Carrying =
+					false
+
+				State.CarriedObject =
+					nil
+
+				SetStatus(
+					"MORTO • AGUARDANDO"
+				)
 
 			end
 		)
 	)
 
-	--// -----------------------------------------------------
-	--// OPTIONAL OBJECT PHYSICS
-	--// -----------------------------------------------------
-	--
-	-- Mantido separado do caminho principal.
-	-- Não roda por padrão.
-	-- -----------------------------------------------------
-
-	if Config.ENABLE_OBJECT_PHYSICS then
-
-		for _, object in
-			ipairs(
-				character:GetDescendants()
-			) do
-
-			if object:IsA(
-				"BasePart"
-			) then
-
-				local name =
-					string.lower(
-						object.Name
-					)
-
-				if
-					string.find(
-						name,
-						"egg",
-						1,
-						true
-					)
-
-					or
-
-					string.find(
-						name,
-						"ovo",
-						1,
-						true
-					)
-				then
-
-					pcall(function()
-
-						object.Massless =
-							true
-
-					end)
-
-				end
-
-			end
-
-		end
-
-	end
 
 	--// -----------------------------------------------------
-	--// APLICAÇÃO INICIAL
+	// PRIMEIRO CARRY SCAN
+	// -----------------------------------------------------
+
+	UpdateCarryState()
+
+
 	--// -----------------------------------------------------
+	// VELOCIDADE INICIAL
+	// -----------------------------------------------------
 
 	if State.Enabled
-		and Config.LOCK_WALKSPEED then
+		and Config.LOCK_WALKSPEED
+	then
 
-		ApplyWalkSpeed()
+		ApplySpeed()
 
 	end
 
-	-- Última validação antes de liberar o estado.
+
+	--// -----------------------------------------------------
+	// FINAL
+	// -----------------------------------------------------
+
 	if ValidCharacter(
 		character,
 		generation,
@@ -1457,10 +2308,8 @@ local function PrepareCharacter(
 		RefreshStatus()
 
 		Debug(
-			"Personagem preparado:",
-			character.Name,
-			"geração:",
-			generation
+			"Personagem pronto:",
+			character.Name
 		)
 
 	else
@@ -1475,7 +2324,7 @@ end
 
 --// =========================================================
 --// SPEED INPUT
---// =========================================================
+// =========================================================
 
 local function SetTargetSpeed()
 
@@ -1503,11 +2352,11 @@ local function SetTargetSpeed()
 
 	end
 
-	local numeric =
+	local value =
 		tonumber(text)
 
 	local normalized =
-		NormalizeSpeed(numeric)
+		NormalizeSpeed(value)
 
 	if not normalized then
 
@@ -1525,7 +2374,9 @@ local function SetTargetSpeed()
 			function()
 
 				if State.Alive then
+
 					RefreshStatus()
+
 				end
 
 			end
@@ -1543,10 +2394,9 @@ local function SetTargetSpeed()
 			normalized
 		)
 
-	if State.Enabled
-		and Config.LOCK_WALKSPEED then
+	if State.Enabled then
 
-		ApplyWalkSpeed()
+		ApplySpeed()
 
 	end
 
@@ -1557,7 +2407,7 @@ end
 
 --// =========================================================
 --// TOGGLE
---// =========================================================
+// =========================================================
 
 local function ToggleSystem()
 
@@ -1573,16 +2423,14 @@ local function ToggleSystem()
 		Toggle.Text =
 			"SISTEMA: ON"
 
-		ApplyWalkSpeed()
+		ApplySpeed()
 
 	else
 
 		Toggle.Text =
 			"SISTEMA: OFF"
 
-		-- Correção importante:
-		-- ao desligar, volta à velocidade original.
-		RestoreOriginalWalkSpeed()
+		RestoreOriginalSpeed()
 
 	end
 
@@ -1592,19 +2440,15 @@ end
 
 
 --// =========================================================
---// BUTTONS
---// =========================================================
+--// BUTTON CONNECTIONS
+// =========================================================
 
 SetConnection(
 	Connections.Global,
 	"ApplyButton",
 
 	ApplyButton.Activated:Connect(
-		function()
-
-			SetTargetSpeed()
-
-		end
+		SetTargetSpeed
 	)
 )
 
@@ -1614,11 +2458,7 @@ SetConnection(
 	"FocusLost",
 
 	SpeedBox.FocusLost:Connect(
-		function()
-
-			SetTargetSpeed()
-
-		end
+		SetTargetSpeed
 	)
 )
 
@@ -1628,32 +2468,30 @@ SetConnection(
 	"Toggle",
 
 	Toggle.Activated:Connect(
-		function()
-
-			ToggleSystem()
-
-		end
+		ToggleSystem
 	)
 )
 
 
 --// =========================================================
 --// HYBRID PHYSICS
---// =========================================================
+// =========================================================
 
 local function PhysicsAssist(
 	deltaTime
 )
 
 	if Config.MOVEMENT_MODE
-		~= "Hybrid" then
+		~= "Hybrid"
+	then
 
 		return
 
 	end
 
 	if not State.Alive
-		or not State.Enabled then
+		or not State.Enabled
+	then
 
 		return
 
@@ -1666,41 +2504,24 @@ local function PhysicsAssist(
 		State.RootPart
 
 	if not humanoid
-		or not root then
+		or not root
+	then
 
 		return
 
 	end
 
 	if not humanoid.Parent
-		or not root.Parent then
+		or not root.Parent
+	then
 
 		return
 
 	end
 
 	if humanoid.Health <= 0
-		or root.Anchored then
-
-		return
-
-	end
-
-	local currentVelocity =
-		root.AssemblyLinearVelocity
-
-	if not IsFiniteVector3(
-		currentVelocity
-	) then
-
-		State.InvalidVelocityCount += 1
-
-		pcall(function()
-
-			root.AssemblyLinearVelocity =
-				Vector3.zero
-
-		end)
+		or root.Anchored
+	then
 
 		return
 
@@ -1714,6 +2535,27 @@ local function PhysicsAssist(
 
 	end
 
+	local velocity =
+		root.AssemblyLinearVelocity
+
+	if not IsFiniteVector3(
+		velocity
+	) then
+
+		State.InvalidVelocityCount +=
+			1
+
+		pcall(function()
+
+			root.AssemblyLinearVelocity =
+				Vector3.zero
+
+		end)
+
+		return
+
+	end
+
 	local dt =
 		math.clamp(
 			deltaTime,
@@ -1721,6 +2563,7 @@ local function PhysicsAssist(
 			Config.MAX_DELTA_TIME
 		)
 
+	-- API atual do Humanoid.
 	local moveVelocity =
 		humanoid:GetMoveVelocity()
 
@@ -1733,10 +2576,10 @@ local function PhysicsAssist(
 	end
 
 	local currentX =
-		currentVelocity.X
+		velocity.X
 
 	local currentZ =
-		currentVelocity.Z
+		velocity.Z
 
 	local horizontal =
 		math.sqrt(
@@ -1745,7 +2588,7 @@ local function PhysicsAssist(
 			currentZ * currentZ
 		)
 
-	-- Limite contra aceleração absurda.
+	--// Hard cap.
 	if horizontal
 		> Config.MAX_HORIZONTAL_VELOCITY
 	then
@@ -1765,145 +2608,109 @@ local function PhysicsAssist(
 	local targetZ =
 		moveVelocity.Z
 
-	--// -----------------------------------------------------
-	--// ACELERAÇÃO
-	--// -----------------------------------------------------
-
-	if
+	local moving =
 		math.abs(targetX)
-		> 0.001
+			> 0.001
 
 		or
 
 		math.abs(targetZ)
-		> 0.001
+			> 0.001
 
-	then
+	local rate
 
-		local alpha =
-			1 - math.exp(
-				-Config.ACCELERATION
-				* dt
-			)
+	if moving then
 
-		local newX =
-			currentX
-			+
-			(targetX - currentX)
-			* alpha
-
-		local newZ =
-			currentZ
-			+
-			(targetZ - currentZ)
-			* alpha
-
-		if not IsFiniteNumber(newX)
-			or not IsFiniteNumber(newZ)
-		then
-
-			return
-
-		end
-
-		if
-			math.abs(
-				newX - currentVelocity.X
-			) > 0.05
-
-			or
-
-			math.abs(
-				newZ - currentVelocity.Z
-			) > 0.05
-		then
-
-			local success =
-				pcall(function()
-
-					root.AssemblyLinearVelocity =
-						Vector3.new(
-							newX,
-							currentVelocity.Y,
-							newZ
-						)
-
-				end)
-
-			if success then
-				State.PhysicsWrites += 1
-			end
-
-		end
+		rate =
+			Config.ACCELERATION
 
 	else
 
-		--// -------------------------------------------------
-		--// DESACELERAÇÃO
-		--// -------------------------------------------------
+		rate =
+			Config.DECELERATION
 
-		local alpha =
-			1 - math.exp(
-				-Config.DECELERATION
-				* dt
-			)
+		targetX =
+			0
 
-		local newX =
-			currentX
-			+
-			(0 - currentX)
-			* alpha
-
-		local newZ =
-			currentZ
-			+
-			(0 - currentZ)
-			* alpha
-
-		if
-			math.abs(
-				newX - currentVelocity.X
-			) > 0.05
-
-			or
-
-			math.abs(
-				newZ - currentVelocity.Z
-			) > 0.05
-		then
-
-			local success =
-				pcall(function()
-
-					root.AssemblyLinearVelocity =
-						Vector3.new(
-							newX,
-							currentVelocity.Y,
-							newZ
-						)
-
-				end)
-
-			if success then
-				State.PhysicsWrites += 1
-			end
-
-		end
+		targetZ =
+			0
 
 	end
 
-	State.LastPhysicsStep =
-		os.clock()
+	local alpha =
+		1 - math.exp(
+			-rate * dt
+		)
+
+	local newX =
+		currentX
+		+
+		(targetX - currentX)
+		* alpha
+
+	local newZ =
+		currentZ
+		+
+		(targetZ - currentZ)
+		* alpha
+
+	if not IsFiniteNumber(newX)
+		or not IsFiniteNumber(newZ)
+	then
+
+		return
+
+	end
+
+	local differenceX =
+		math.abs(
+			newX -
+			velocity.X
+		)
+
+	local differenceZ =
+		math.abs(
+			newZ -
+			velocity.Z
+		)
+
+	-- Só escreve quando a diferença realmente existe.
+	if differenceX <= 0.05
+		and differenceZ <= 0.05
+	then
+
+		return
+
+	end
+
+	local success =
+		pcall(function()
+
+			root.AssemblyLinearVelocity =
+				Vector3.new(
+					newX,
+					velocity.Y,
+					newZ
+				)
+
+		end)
+
+	if success then
+
+		State.PhysicsWrites +=
+			1
+
+		State.LastPhysicsStep =
+			os.clock()
+
+	end
 
 end
 
 
 --// =========================================================
 --// PRE SIMULATION
---//
---// CORREÇÃO DE OTIMIZAÇÃO:
---// só conectamos este evento se Hybrid estiver ativo.
---// =========================================================
+// =========================================================
 
 if Config.MOVEMENT_MODE
 	== "Hybrid"
@@ -1914,13 +2721,7 @@ then
 		"PreSimulation",
 
 		RunService.PreSimulation:Connect(
-			function(deltaTime)
-
-				PhysicsAssist(
-					deltaTime
-				)
-
-			end
+			PhysicsAssist
 		)
 	)
 
@@ -1929,7 +2730,7 @@ end
 
 --// =========================================================
 --// CHARACTER ADDED
---// =========================================================
+// =========================================================
 
 SetConnection(
 	Connections.Global,
@@ -1942,8 +2743,6 @@ SetConnection(
 				return
 			end
 
-			-- task.defer reduz espera desnecessária
-			-- e deixa a nova árvore do personagem iniciar.
 			task.defer(
 				function()
 
@@ -1952,7 +2751,8 @@ SetConnection(
 					end
 
 					if character
-						~= Player.Character then
+						~= Player.Character
+					then
 
 						return
 
@@ -1973,7 +2773,7 @@ SetConnection(
 
 --// =========================================================
 --// CHARACTER REMOVING
---// =========================================================
+// =========================================================
 
 SetConnection(
 	Connections.Global,
@@ -1983,14 +2783,39 @@ SetConnection(
 		function(character)
 
 			if character
-				== State.Character then
+				== State.Character
+			then
 
-				-- Invalida imediatamente qualquer
-				-- preparação antiga.
-				State.CharacterGeneration += 1
-				State.PreparationToken += 1
+				-- Restaura antes de limpar a referência.
+				RestoreOriginalSpeed()
 
-				CleanupCharacter()
+				State.CharacterGeneration +=
+					1
+
+				State.PreparationToken +=
+					1
+
+				DisconnectGroup(
+					Connections.Character
+				)
+
+				State.Character =
+					nil
+
+				State.Humanoid =
+					nil
+
+				State.RootPart =
+					nil
+
+				State.Carrying =
+					false
+
+				State.CarriedObject =
+					nil
+
+				State.OriginalWalkSpeed =
+					nil
 
 				State.Preparing =
 					false
@@ -2008,123 +2833,7 @@ SetConnection(
 
 --// =========================================================
 --// WATCHDOG
---//
---// Não usa Heartbeat.
---// É periódico e portanto executado apenas
---// quando realmente necessário.
---// =========================================================
-
-local function Watchdog()
-
-	if not State.Alive then
-		return
-	end
-
-	local character =
-		Player.Character
-
-	--// ---------------------------------------------
-	--// SEM PERSONAGEM
-	--// ---------------------------------------------
-
-	if not character then
-
-		if State.Character then
-
-			CleanupCharacter()
-
-		end
-
-		RefreshStatus()
-
-		return
-
-	end
-
-	--// ---------------------------------------------
-	--// PERSONAGEM TROCADO
-	--// ---------------------------------------------
-
-	if character
-		~= State.Character then
-
-		if not State.Preparing then
-
-			PrepareCharacter(
-				character,
-				false
-			)
-
-		end
-
-		return
-
-	end
-
-	--// ---------------------------------------------
-	--// HUMANOID PERDIDO
-	--// ---------------------------------------------
-
-	if not State.Humanoid
-		or not State.Humanoid.Parent then
-
-		if not State.Preparing then
-
-			PrepareCharacter(
-				character,
-				true
-			)
-
-		end
-
-		return
-
-	end
-
-	--// ---------------------------------------------
-	--// ROOT PERDIDO
-	// ---------------------------------------------
-
-	if not State.RootPart
-		or not State.RootPart.Parent then
-
-		if not State.Preparing then
-
-			PrepareCharacter(
-				character,
-				true
-			)
-
-		end
-
-		return
-
-	end
-
-	--// ---------------------------------------------
-	--// WALKSPEED
-	// ---------------------------------------------
-
-	if State.Enabled
-		and Config.LOCK_WALKSPEED
-		and State.Humanoid.Health > 0
-	then
-
-		if State.Humanoid.WalkSpeed
-			~= State.TargetSpeed then
-
-			ApplyWalkSpeed()
-
-		end
-
-	end
-
-end
-
-
---// =========================================================
---// WATCHDOG THREAD
---// =========================================================
+// =========================================================
 
 task.spawn(
 	function()
@@ -2135,20 +2844,134 @@ task.spawn(
 				Config.WATCHDOG_INTERVAL
 			)
 
-			if State.Alive then
+			if not State.Alive then
+				break
+			end
 
-				local success,
-					errorMessage =
-					pcall(
-						Watchdog
+			local character =
+				Player.Character
+
+			--// ---------------------------------------------
+			--// SEM CHARACTER
+			// ---------------------------------------------
+
+			if not character then
+
+				if State.Character then
+
+					DisconnectGroup(
+						Connections.Character
 					)
 
-				if not success then
+					State.Character =
+						nil
 
-					Debug(
-						"Watchdog:",
-						errorMessage
+					State.Humanoid =
+						nil
+
+					State.RootPart =
+						nil
+
+				end
+
+				RefreshStatus()
+
+				continue
+
+			end
+
+
+			--// ---------------------------------------------
+			--// CHARACTER DIFERENTE
+			// ---------------------------------------------
+
+			if character
+				~= State.Character
+			then
+
+				if not State.Preparing then
+
+					PrepareCharacter(
+						character,
+						false
 					)
+
+				end
+
+				continue
+
+			end
+
+
+			--// ---------------------------------------------
+			--// HUMANOID PERDIDO
+			// ---------------------------------------------
+
+			if not State.Humanoid
+				or not State.Humanoid.Parent
+			then
+
+				if not State.Preparing then
+
+					PrepareCharacter(
+						character,
+						true
+					)
+
+				end
+
+				continue
+
+			end
+
+
+			--// ---------------------------------------------
+			// ROOT PERDIDO
+			// ---------------------------------------------
+
+			if not State.RootPart
+				or not State.RootPart.Parent
+			then
+
+				if not State.Preparing then
+
+					PrepareCharacter(
+						character,
+						true
+					)
+
+				end
+
+				continue
+
+			end
+
+
+			--// ---------------------------------------------
+			// CARRY
+			// ---------------------------------------------
+
+			UpdateCarryState()
+
+
+			--// ---------------------------------------------
+			// WALKSPEED
+			// ---------------------------------------------
+
+			if State.Enabled
+				and Config.LOCK_WALKSPEED
+				and State.Humanoid.Health > 0
+			then
+
+				local desired =
+					GetDesiredSpeed()
+
+				if
+					State.Humanoid.WalkSpeed
+					~= desired
+				then
+
+					ApplySpeed()
 
 				end
 
@@ -2161,8 +2984,8 @@ task.spawn(
 
 
 --// =========================================================
---// CAMERA LIMITS
---// =========================================================
+--// PANEL LIMITS
+// =========================================================
 
 local function GetPanelLimits()
 
@@ -2202,19 +3025,12 @@ local function ClampPanel(
 	y
 )
 
-	if not IsFiniteNumber(x)
-		or not IsFiniteNumber(y)
-	then
-
-		return 25, 200
-
-	end
-
 	local maxX, maxY =
 		GetPanelLimits()
 
 	if not maxX
-		or not maxY then
+		or not maxY
+	then
 
 		return x, y
 
@@ -2240,7 +3056,8 @@ end
 local function RepositionPanel()
 
 	if not Frame
-		or not Frame.Parent then
+		or not Frame.Parent
+	then
 
 		return
 
@@ -2269,7 +3086,7 @@ end
 
 --// =========================================================
 --// DRAG START
---// =========================================================
+// =========================================================
 
 SetConnection(
 	Connections.Global,
@@ -2313,8 +3130,8 @@ SetConnection(
 
 
 --// =========================================================
---// DRAG MOVE
---// =========================================================
+//// DRAG MOVE
+// =========================================================
 
 SetConnection(
 	Connections.Global,
@@ -2328,6 +3145,7 @@ SetConnection(
 			end
 
 			if
+
 				input.UserInputType
 					~= Enum.UserInputType.Touch
 
@@ -2342,14 +3160,14 @@ SetConnection(
 
 			end
 
-			local position =
+			local current =
 				Vector2.new(
 					input.Position.X,
 					input.Position.Y
 				)
 
 			local delta =
-				position
+				current
 				- State.DragStart
 
 			local x =
@@ -2378,8 +3196,8 @@ SetConnection(
 
 
 --// =========================================================
---// DRAG END
---// =========================================================
+//// DRAG END
+// =========================================================
 
 SetConnection(
 	Connections.Global,
@@ -2411,8 +3229,8 @@ SetConnection(
 
 
 --// =========================================================
---// CAMERA BIND
---// =========================================================
+//// CAMERA
+// =========================================================
 
 local function BindCamera()
 
@@ -2437,11 +3255,7 @@ local function BindCamera()
 		camera:GetPropertyChangedSignal(
 			"ViewportSize"
 		):Connect(
-			function()
-
-				RepositionPanel()
-
-			end
+			RepositionPanel
 		)
 	)
 
@@ -2457,11 +3271,7 @@ SetConnection(
 	workspace:GetPropertyChangedSignal(
 		"CurrentCamera"
 	):Connect(
-		function()
-
-			BindCamera()
-
-		end
+		BindCamera
 	)
 )
 
@@ -2469,11 +3279,8 @@ BindCamera()
 
 
 --// =========================================================
---// MISPREDICTION DIAGNOSTIC
---//
---// Apenas contador.
---// Não tenta contrariar a autoridade do servidor.
---// =========================================================
+//// MISPREDICTION DIAGNOSTIC
+// =========================================================
 
 if Config.DIAGNOSTICS then
 
@@ -2488,7 +3295,8 @@ if Config.DIAGNOSTICS then
 
 					if State.Alive then
 
-						State.MispredictionCount += 1
+						State.MispredictionCount +=
+							1
 
 						Debug(
 							"Misprediction:",
@@ -2507,8 +3315,8 @@ end
 
 
 --// =========================================================
---// SHUTDOWN
---// =========================================================
+//// SHUTDOWN
+// =========================================================
 
 local function Shutdown()
 
@@ -2519,16 +3327,17 @@ local function Shutdown()
 	State.Alive =
 		false
 
-	-- Invalida callbacks antigos.
-	State.CharacterGeneration += 1
-	State.PreparationToken += 1
+	State.CharacterGeneration +=
+		1
+
+	State.PreparationToken +=
+		1
 
 	State.Preparing =
 		false
 
-	-- Restaura a velocidade antes de eliminar
-	-- a referência do Humanoid.
-	RestoreOriginalWalkSpeed()
+	-- Restaura antes de perder a referência.
+	RestoreOriginalSpeed()
 
 	DisconnectGroup(
 		Connections.Global
@@ -2551,7 +3360,10 @@ local function Shutdown()
 	State.RootPart =
 		nil
 
-	State.OriginalWalkSpeed =
+	State.Carrying =
+		false
+
+	State.CarriedObject =
 		nil
 
 	State.Dragging =
@@ -2568,15 +3380,15 @@ local function Shutdown()
 	end
 
 	Debug(
-		"Speed Ultra V6.1 encerrado."
+		"Speed Ultra V7.1 encerrado."
 	)
 
 end
 
 
 --// =========================================================
---// SCRIPT DESTROY
---// =========================================================
+//// SCRIPT DESTROYING
+// =========================================================
 
 if script then
 
@@ -2592,8 +3404,8 @@ end
 
 
 --// =========================================================
---// START
---// =========================================================
+//// INICIALIZAÇÃO
+// =========================================================
 
 State.TargetSpeed =
 	NormalizeSpeed(
@@ -2605,6 +3417,7 @@ SpeedBox.Text =
 	tostring(
 		State.TargetSpeed
 	)
+
 
 if Player.Character then
 
@@ -2621,8 +3434,10 @@ else
 
 end
 
+
 RefreshStatus()
 
-Debug(
-	"Speed Ultra V6.1 iniciado."
-)
+
+--// =========================================================
+//// END
+// =========================================================
