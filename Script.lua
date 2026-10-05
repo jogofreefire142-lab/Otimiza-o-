@@ -1,6 +1,6 @@
 -- =========================================================
--- SPEED ULTRA V8.2
--- V8.0 + OTIMIZAÇÃO LEVE 35% REVERSÍVEL
+-- SPEED ULTRA V8.3
+-- V8.2 + CORREÇÃO DE VELOCIDADE NO CARRY
 -- Otimiza apenas os efeitos selecionados em 35%; os outros 65% do visual permanecem intocados.: sem remover texturas, materiais ou sombras
 
 -- =========================================================
@@ -70,7 +70,9 @@ local Config = {
 	-- Em vez de reduzir a velocidade para objetos grandes, o script evita
 	-- reaplicar WalkSpeed repetidamente enquanto a interacao fisica ocorre.
 	CARRY_HANDOFF_GRACE = 0.35,
-	CARRY_REAPPLY_INTERVAL = 1.50,
+	CARRY_REAPPLY_INTERVAL = 0.70,
+	CARRY_SPEED_RECOVERY_DELAY = 0.55,
+	CARRY_SPEED_TOLERANCE = 0.50,
 
 	-- Estabilização adaptativa para objetos carregados de tamanhos diferentes.
 	-- Objetos pequenos não são alterados. Objetos grandes ficam sem massa
@@ -188,6 +190,7 @@ local State = {
 	CarryStartedAt = 0,
 	LastCarrySpeedApply = 0,
 	CarrySpeedAppliedForCycle = false,
+	CarrySpeedRecoveryPending = false,
 
 	CarrySizeClass = "NONE",
 	CarrySizeMax = 0,
@@ -238,7 +241,7 @@ local Title
 
 local function Debug(...)
 	if Config.DEBUG then
-		warn("[SPEED ULTRA V8.2]", ...)
+		warn("[SPEED ULTRA V8.3]", ...)
 	end
 end
 
@@ -380,7 +383,7 @@ Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -42, 1, 0)
 Title.Position = UDim2.fromOffset(8, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "SPEED ULTRA V8.2"
+Title.Text = "SPEED ULTRA V8.3"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 12
@@ -1084,20 +1087,18 @@ local function ApplySpeed(force)
 	end
 
 	local now = os.clock()
+	local desired = GetDesiredSpeed()
 
-	-- Na entrada do carry, deixe a junta/objeto terminar de se prender.
-	-- Isso evita que uma escrita de WalkSpeed coincida com a troca de
-	-- ownership/simulacao fisica do objeto.
+	if not IsFiniteNumber(desired) then
+		return false
+	end
+
 	if State.Carrying then
+		-- Pequena janela somente na entrada do carry. Depois dela, a velocidade
+		-- volta a ser mantida em 255 de forma controlada, em vez de ser
+		-- abandonada pelo resto do ciclo.
 		local sinceCarry = now - State.CarryStartedAt
 		if sinceCarry >= 0 and sinceCarry < GetCarryGrace() then
-			return true
-		end
-
-		-- A velocidade 255 e aplicada no maximo uma vez por ciclo de carry.
-		-- O jogo fica livre para estabilizar a fisica depois disso, evitando
-		-- o efeito de frente -> recuo -> frente causado por reaplicacoes.
-		if State.CarrySpeedAppliedForCycle then
 			return true
 		end
 
@@ -1106,13 +1107,10 @@ local function ApplySpeed(force)
 		end
 	end
 
-	local desired = GetDesiredSpeed()
-
-	if not IsFiniteNumber(desired) then
-		return false
-	end
-
-	if math.abs(humanoid.WalkSpeed - desired) < 0.01 then
+	local current = humanoid.WalkSpeed
+	if IsFiniteNumber(current)
+		and math.abs(current - desired) <= Config.CARRY_SPEED_TOLERANCE
+	then
 		if State.Carrying then
 			State.LastCarrySpeedApply = now
 			State.CarrySpeedAppliedForCycle = true
@@ -1178,6 +1176,7 @@ local function UpdateCarryState(force)
 
 	if carrying and (not wasCarrying or object ~= oldObject) then
 		State.CarryStartedAt = now
+		State.CarrySpeedRecoveryPending = false
 		State.LastCarrySpeedApply = 0
 		State.CarrySpeedAppliedForCycle = false
 
@@ -1210,6 +1209,7 @@ local function UpdateCarryState(force)
 		State.CarryStartedAt = 0
 		State.LastCarrySpeedApply = 0
 		State.CarrySpeedAppliedForCycle = false
+		State.CarrySpeedRecoveryPending = false
 	end
 
 	ApplySpeed(false)
@@ -1274,6 +1274,7 @@ local function PrepareCharacter(character, isRecovery)
 	State.CarryStartedAt = 0
 	State.LastCarrySpeedApply = 0
 	State.CarrySpeedAppliedForCycle = false
+	State.CarrySpeedRecoveryPending = false
 	ClearCarryPhysics()
 
 	SetStatus("CARREGANDO...")
@@ -1365,9 +1366,27 @@ local function PrepareCharacter(character, isRecovery)
 				return
 			end
 
-			-- Durante o carry, nao entre em uma disputa de escrita repetida
-			-- com o controlador fisico do jogo.
-			if State.Carrying and State.CarrySpeedAppliedForCycle then
+			-- Nao reescreva imediatamente. Agende uma recuperacao pequena
+			-- para devolver 255 sem entrar em loop de propriedades.
+			if State.Carrying then
+				if State.CarrySpeedRecoveryPending then
+					return
+				end
+
+				State.CarrySpeedRecoveryPending = true
+				task.delay(Config.CARRY_SPEED_RECOVERY_DELAY, function()
+					State.CarrySpeedRecoveryPending = false
+
+					if not State.Alive
+						or not State.Carrying
+						or State.Humanoid ~= humanoid
+						or not humanoid.Parent
+					then
+						return
+					end
+
+					ApplySpeed(true)
+				end)
 				return
 			end
 
@@ -1384,6 +1403,7 @@ local function PrepareCharacter(character, isRecovery)
 			State.CarryStartedAt = 0
 			State.LastCarrySpeedApply = 0
 			State.CarrySpeedAppliedForCycle = false
+			State.CarrySpeedRecoveryPending = false
 			ClearCarryPhysics()
 			SetStatus("MORTO • AGUARDANDO")
 		end)
@@ -1625,11 +1645,11 @@ local function SetCollapsed(collapsed)
 	if collapsed then
 		Frame.Size = CollapsedSize
 		CollapseButton.Text = "+"
-		Title.Text = "SPEED ULTRA V8.2"
+		Title.Text = "SPEED ULTRA V8.3"
 	else
 		Frame.Size = ExpandedSize
 		CollapseButton.Text = "—"
-		Title.Text = "SPEED ULTRA V8.2"
+		Title.Text = "SPEED ULTRA V8.3"
 	end
 
 	local x = Frame.AbsolutePosition.X
@@ -2190,9 +2210,7 @@ task.spawn(function()
 			end
 		else
 			UpdateCarryState(false)
-			if not State.Carrying or not State.CarrySpeedAppliedForCycle then
-				ApplySpeed(false)
-			end
+			ApplySpeed(false)
 		end
 	end
 end)
@@ -2266,7 +2284,7 @@ end
 
 RefreshStatus()
 
-Debug("Speed Ultra V8.2 iniciado.")
+Debug("Speed Ultra V8.3 iniciado.")
 
 -- =========================================================
 -- FIM
