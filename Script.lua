@@ -1,6 +1,6 @@
 -- =========================================================
--- SPEED ULTRA V7.2 DIRECT
--- Velocidade + Carry + Recovery
+-- SPEED ULTRA V7.3
+-- V7.2 + OTIMIZAÇÃO
 -- =========================================================
 
 if not game:IsLoaded() then
@@ -13,6 +13,11 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
+local Lighting = game:GetService("Lighting")
+
+if not RunService:IsClient() then
+	return
+end
 
 local Player = Players.LocalPlayer
 
@@ -37,8 +42,6 @@ local Config = {
 	MIN_SPEED = 0,
 	MAX_SPEED = 1000,
 
-	-- WalkSpeed = mais leve
-	-- Hybrid = WalkSpeed + física
 	MOVEMENT_MODE = "WalkSpeed",
 
 	ACCELERATION = 55,
@@ -80,7 +83,10 @@ local Config = {
 		"HeavyObject"
 	},
 
-	GUI_NAME = "SpeedUltraV72Direct"
+	GUI_NAME = "SpeedUltraV73_2026",
+
+	OPTIMIZE_BATCH = 150,
+	OPTIMIZE_DELAY = 0.01
 }
 
 -- =========================================================
@@ -104,6 +110,7 @@ local State = {
 
 	CharacterGeneration = 0,
 	PreparationToken = 0,
+
 	Preparing = false,
 
 	RecoveryWindowStart = 0,
@@ -116,7 +123,10 @@ local State = {
 	DragStart = Vector2.zero,
 	PanelStart = Vector2.zero,
 
-	Camera = nil
+	Camera = nil,
+
+	Optimizing = false,
+	Optimized = false
 }
 
 local Connections = {
@@ -126,7 +136,17 @@ local Connections = {
 }
 
 -- =========================================================
--- CONEXÕES
+-- DEBUG
+-- =========================================================
+
+local function Debug(...)
+	if Config.DEBUG then
+		warn("[SPEED ULTRA V7.3]", ...)
+	end
+end
+
+-- =========================================================
+-- CONNECTION MANAGER
 -- =========================================================
 
 local function Disconnect(connection)
@@ -188,7 +208,9 @@ end
 -- GUI ANTIGA
 -- =========================================================
 
-local oldGui = PlayerGui:FindFirstChild(Config.GUI_NAME)
+local oldGui = PlayerGui:FindFirstChild(
+	Config.GUI_NAME
+)
 
 if oldGui then
 	pcall(function()
@@ -201,106 +223,247 @@ end
 -- =========================================================
 
 local ScreenGui = Instance.new("ScreenGui")
+
 ScreenGui.Name = Config.GUI_NAME
 ScreenGui.ResetOnSpawn = false
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
 ScreenGui.Parent = PlayerGui
 
 local Frame = Instance.new("Frame")
+
 Frame.Name = "Main"
-Frame.Size = UDim2.fromOffset(210, 116)
+Frame.Size = UDim2.fromOffset(215, 150)
 Frame.Position = UDim2.fromOffset(25, 200)
-Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+
+Frame.BackgroundColor3 =
+	Color3.fromRGB(15, 15, 15)
+
 Frame.BorderSizePixel = 0
 Frame.Active = true
+
 Frame.Parent = ScreenGui
 
 local FrameCorner = Instance.new("UICorner")
-FrameCorner.CornerRadius = UDim.new(0, 9)
+
+FrameCorner.CornerRadius =
+	UDim.new(0, 9)
+
 FrameCorner.Parent = Frame
 
 local Accent = Instance.new("Frame")
-Accent.Size = UDim2.new(1, 0, 0, 3)
-Accent.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
+
+Accent.Size =
+	UDim2.new(1, 0, 0, 3)
+
+Accent.BackgroundColor3 =
+	Color3.fromRGB(255, 0, 100)
+
 Accent.BorderSizePixel = 0
 Accent.Parent = Frame
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -16, 0, 25)
-Title.Position = UDim2.fromOffset(8, 5)
+
+Title.Size =
+	UDim2.new(1, -16, 0, 25)
+
+Title.Position =
+	UDim2.fromOffset(8, 5)
+
 Title.BackgroundTransparency = 1
-Title.Text = "SPEED ULTRA V7.2"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.SourceSansBold
+
+Title.Text =
+	"SPEED ULTRA V7.3"
+
+Title.TextColor3 =
+	Color3.fromRGB(255, 255, 255)
+
+Title.Font =
+	Enum.Font.SourceSansBold
+
 Title.TextSize = 12
-Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.TextXAlignment =
+	Enum.TextXAlignment.Left
+
 Title.Active = true
 Title.Parent = Frame
 
 local SpeedBox = Instance.new("TextBox")
-SpeedBox.Size = UDim2.fromOffset(85, 29)
-SpeedBox.Position = UDim2.fromOffset(10, 36)
-SpeedBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+
+SpeedBox.Size =
+	UDim2.fromOffset(85, 29)
+
+SpeedBox.Position =
+	UDim2.fromOffset(10, 36)
+
+SpeedBox.BackgroundColor3 =
+	Color3.fromRGB(30, 30, 30)
+
 SpeedBox.BorderSizePixel = 0
-SpeedBox.Text = tostring(State.TargetSpeed)
-SpeedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedBox.Font = Enum.Font.SourceSans
+
+SpeedBox.Text =
+	tostring(State.TargetSpeed)
+
+SpeedBox.TextColor3 =
+	Color3.fromRGB(255, 255, 255)
+
+SpeedBox.Font =
+	Enum.Font.SourceSans
+
 SpeedBox.TextSize = 16
+
 SpeedBox.ClearTextOnFocus = false
 SpeedBox.TextEditable = true
+
 SpeedBox.Parent = Frame
 
 local SpeedCorner = Instance.new("UICorner")
-SpeedCorner.CornerRadius = UDim.new(0, 5)
+
+SpeedCorner.CornerRadius =
+	UDim.new(0, 5)
+
 SpeedCorner.Parent = SpeedBox
 
-local ApplyButton = Instance.new("TextButton")
-ApplyButton.Size = UDim2.fromOffset(90, 29)
-ApplyButton.Position = UDim2.fromOffset(105, 36)
-ApplyButton.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
+local ApplyButton =
+	Instance.new("TextButton")
+
+ApplyButton.Size =
+	UDim2.fromOffset(90, 29)
+
+ApplyButton.Position =
+	UDim2.fromOffset(105, 36)
+
+ApplyButton.BackgroundColor3 =
+	Color3.fromRGB(255, 0, 100)
+
 ApplyButton.BorderSizePixel = 0
-ApplyButton.Text = "APLICAR"
-ApplyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ApplyButton.Font = Enum.Font.SourceSansBold
+
+ApplyButton.Text =
+	"APLICAR"
+
+ApplyButton.TextColor3 =
+	Color3.fromRGB(255, 255, 255)
+
+ApplyButton.Font =
+	Enum.Font.SourceSansBold
+
 ApplyButton.TextSize = 12
+
 ApplyButton.Parent = Frame
 
-local ApplyCorner = Instance.new("UICorner")
-ApplyCorner.CornerRadius = UDim.new(0, 5)
+local ApplyCorner =
+	Instance.new("UICorner")
+
+ApplyCorner.CornerRadius =
+	UDim.new(0, 5)
+
 ApplyCorner.Parent = ApplyButton
 
-local Toggle = Instance.new("TextButton")
-Toggle.Size = UDim2.fromOffset(85, 27)
-Toggle.Position = UDim2.fromOffset(10, 72)
-Toggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+local Toggle =
+	Instance.new("TextButton")
+
+Toggle.Size =
+	UDim2.fromOffset(85, 27)
+
+Toggle.Position =
+	UDim2.fromOffset(10, 72)
+
+Toggle.BackgroundColor3 =
+	Color3.fromRGB(45, 45, 45)
+
 Toggle.BorderSizePixel = 0
-Toggle.Text = "SISTEMA: ON"
-Toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-Toggle.Font = Enum.Font.SourceSansBold
+
+Toggle.Text =
+	"SISTEMA: ON"
+
+Toggle.TextColor3 =
+	Color3.fromRGB(255, 255, 255)
+
+Toggle.Font =
+	Enum.Font.SourceSansBold
+
 Toggle.TextSize = 11
+
 Toggle.Parent = Frame
 
-local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(0, 5)
+local ToggleCorner =
+	Instance.new("UICorner")
+
+ToggleCorner.CornerRadius =
+	UDim.new(0, 5)
+
 ToggleCorner.Parent = Toggle
 
-local Status = Instance.new("TextLabel")
-Status.Size = UDim2.fromOffset(110, 27)
-Status.Position = UDim2.fromOffset(100, 72)
+local Status =
+	Instance.new("TextLabel")
+
+Status.Size =
+	UDim2.fromOffset(115, 27)
+
+Status.Position =
+	UDim2.fromOffset(100, 72)
+
 Status.BackgroundTransparency = 1
-Status.Text = "INICIANDO"
-Status.TextColor3 = Color3.fromRGB(170, 170, 170)
-Status.Font = Enum.Font.SourceSans
+
+Status.Text =
+	"INICIANDO"
+
+Status.TextColor3 =
+	Color3.fromRGB(170, 170, 170)
+
+Status.Font =
+	Enum.Font.SourceSans
+
 Status.TextSize = 10
-Status.TextXAlignment = Enum.TextXAlignment.Left
+
+Status.TextXAlignment =
+	Enum.TextXAlignment.Left
+
 Status.Parent = Frame
+
+local OptimizeButton =
+	Instance.new("TextButton")
+
+OptimizeButton.Size =
+	UDim2.fromOffset(185, 27)
+
+OptimizeButton.Position =
+	UDim2.fromOffset(10, 108)
+
+OptimizeButton.BackgroundColor3 =
+	Color3.fromRGB(55, 55, 55)
+
+OptimizeButton.BorderSizePixel = 0
+
+OptimizeButton.Text =
+	"OTIMIZA"
+
+OptimizeButton.TextColor3 =
+	Color3.fromRGB(255, 255, 255)
+
+OptimizeButton.Font =
+	Enum.Font.SourceSansBold
+
+OptimizeButton.TextSize = 11
+
+OptimizeButton.Parent = Frame
+
+local OptimizeCorner =
+	Instance.new("UICorner")
+
+OptimizeCorner.CornerRadius =
+	UDim.new(0, 5)
+
+OptimizeCorner.Parent =
+	OptimizeButton
 
 -- =========================================================
 -- STATUS
 -- =========================================================
 
 local function SetStatus(text)
+
 	if not State.Alive then
 		return
 	end
@@ -308,40 +471,95 @@ local function SetStatus(text)
 	if Status and Status.Parent then
 		Status.Text = tostring(text)
 	end
+
 end
 
 local function RefreshStatus()
+
 	if not State.Alive then
 		return
 	end
 
-	if not State.Enabled then
-		SetStatus("DESATIVADO")
+	if State.Optimizing then
+
+		SetStatus(
+			"OTIMIZANDO..."
+		)
+
 		return
+
+	end
+
+	if State.Optimized then
+
+		if State.Carrying then
+
+			SetStatus(
+				"BANANA • CARRY"
+			)
+
+		else
+
+			SetStatus(
+				"BANANA • ON"
+			)
+
+		end
+
+		return
+
+	end
+
+	if not State.Enabled then
+
+		SetStatus(
+			"DESATIVADO"
+		)
+
+		return
+
 	end
 
 	if State.Carrying then
+
 		SetStatus(
-			"CARRY • " ..
-			tostring(Config.CARRY_SPEED)
+			"CARRY • "
+			.. tostring(
+				Config.CARRY_SPEED
+			)
 		)
+
 		return
+
 	end
 
 	if not State.Character then
-		SetStatus("AGUARDANDO")
+
+		SetStatus(
+			"AGUARDANDO"
+		)
+
 		return
+
 	end
 
 	if not State.Humanoid then
-		SetStatus("CARREGANDO")
+
+		SetStatus(
+			"CARREGANDO"
+		)
+
 		return
+
 	end
 
 	SetStatus(
-		"ATIVO • " ..
-		tostring(State.TargetSpeed)
+		"ATIVO • "
+		.. tostring(
+			State.TargetSpeed
+		)
 	)
+
 end
 
 -- =========================================================
@@ -349,37 +567,62 @@ end
 -- =========================================================
 
 local function CanRecover()
-	local now = os.clock()
 
-	if now - State.RecoveryWindowStart
-		> Config.RECOVERY_WINDOW then
+	local now =
+		os.clock()
 
-		State.RecoveryWindowStart = now
-		State.RecoveryCount = 0
+	if
+		now - State.RecoveryWindowStart
+		> Config.RECOVERY_WINDOW
+	then
+
+		State.RecoveryWindowStart =
+			now
+
+		State.RecoveryCount =
+			0
+
 	end
 
-	if now - State.LastRecovery
-		< Config.RECOVERY_COOLDOWN then
+	if
+		now - State.LastRecovery
+		< Config.RECOVERY_COOLDOWN
+	then
 
 		return false
+
 	end
 
-	return State.RecoveryCount
+	return
+		State.RecoveryCount
 		< Config.MAX_RECOVERIES
+
 end
 
 local function RegisterRecovery()
-	local now = os.clock()
 
-	if now - State.RecoveryWindowStart
-		> Config.RECOVERY_WINDOW then
+	local now =
+		os.clock()
 
-		State.RecoveryWindowStart = now
-		State.RecoveryCount = 0
+	if
+		now - State.RecoveryWindowStart
+		> Config.RECOVERY_WINDOW
+	then
+
+		State.RecoveryWindowStart =
+			now
+
+		State.RecoveryCount =
+			0
+
 	end
 
-	State.RecoveryCount += 1
-	State.LastRecovery = now
+	State.RecoveryCount +=
+		1
+
+	State.LastRecovery =
+		now
+
 end
 
 -- =========================================================
@@ -392,173 +635,195 @@ local function ValidCharacter(
 	token
 )
 
-	return State.Alive
+	return
+		State.Alive
 		and Player.Character == character
 		and State.Character == character
 		and State.CharacterGeneration == generation
 		and State.PreparationToken == token
+
 end
 
 -- =========================================================
--- CARRY: ATTRIBUTES
+-- CARRY ATTRIBUTES
 -- =========================================================
 
-local function CheckCarryAttributes(object)
-	if not Config.DETECT_ATTRIBUTES then
+local function CheckCarryAttributes(
+	object
+)
+
+	if not Config.DETECT_ATTRIBUTES
+		or not object
+	then
+
 		return false
+
 	end
 
-	for _, name in ipairs(
-		Config.CARRY_ATTRIBUTES
-	) do
+	for _, attributeName in
+		ipairs(
+			Config.CARRY_ATTRIBUTES
+		) do
 
 		local value =
-			object:GetAttribute(name)
+			object:GetAttribute(
+				attributeName
+			)
 
 		if value == true then
 			return true
 		end
 
-		if type(value) == "number"
-			and value > 0 then
+		if
+			type(value) == "number"
+			and value > 0
+		then
 
 			return true
+
 		end
 
-		if type(value) == "string"
-			and value ~= "" then
+		if
+			type(value) == "string"
+			and value ~= ""
+		then
 
 			return true
+
 		end
+
 	end
 
 	return false
+
 end
 
 -- =========================================================
--- CARRY: TAGS
+-- CARRY TAGS
 -- =========================================================
 
-local function CheckCarryTags(object)
-	if not Config.DETECT_TAGS then
+local function CheckCarryTags(
+	object
+)
+
+	if not Config.DETECT_TAGS
+		or not object
+	then
+
 		return false
+
 	end
 
-	for _, tag in ipairs(
-		Config.CARRY_TAGS
-	) do
+	for _, tagName in
+		ipairs(
+			Config.CARRY_TAGS
+		) do
 
 		if CollectionService:HasTag(
 			object,
-			tag
+			tagName
 		) then
 
 			return true
+
 		end
+
 	end
 
 	return false
+
 end
 
 -- =========================================================
--- CARRY: TOOL
+-- CARRY TOOL
 -- =========================================================
 
-local function CheckCarryTool(character)
+local function CheckCarryTool(
+	character
+)
+
 	if not Config.DETECT_TOOLS then
 		return false, nil
 	end
 
-	for _, child in ipairs(
-		character:GetChildren()
-	) do
+	for _, child in
+		ipairs(
+			character:GetChildren()
+		) do
 
 		if child:IsA("Tool") then
+
 			return true, child
+
 		end
+
 	end
 
 	return false, nil
+
 end
 
 -- =========================================================
--- CARRY: CONSTRAINT
+-- CARRY CONSTRAINT
 -- =========================================================
 
-local function CheckCarryConstraint(character)
+local function CheckCarryConstraint(
+	character
+)
+
 	if not Config.DETECT_CONSTRAINTS then
 		return false, nil
 	end
 
-	for _, object in ipairs(
-		character:GetDescendants()
-	) do
+	for _, object in
+		ipairs(
+			character:GetDescendants()
+		) do
 
-		local p0
-		local p1
+		if
+			object:IsA("WeldConstraint")
+			or
+			object:IsA("Weld")
+			or
+			object:IsA("Motor6D")
+		then
 
-		if object:IsA("WeldConstraint")
-			or object:IsA("Weld")
-			or object:IsA("Motor6D") then
+			local p0 =
+				object.Part0
 
-			p0 = object.Part0
-			p1 = object.Part1
+			local p1 =
+				object.Part1
 
-		elseif object:IsA("AlignPosition")
-			or object:IsA("AlignOrientation")
-			or object:IsA("RopeConstraint")
-			or object:IsA("RodConstraint")
-			or object:IsA("SpringConstraint")
-			or object:IsA("BallSocketConstraint")
-			or object:IsA("HingeConstraint")
-			or object:IsA("PrismaticConstraint")
-			or object:IsA("CylindricalConstraint")
-			or object:IsA("UniversalConstraint") then
+			if p0 and p1 then
 
-			local a0 = object.Attachment0
-			local a1 = object.Attachment1
+				local inside0 =
+					p0:IsDescendantOf(
+						character
+					)
 
-			if a0
-				and a0.Parent
-				and a0.Parent:IsA("BasePart")
-			then
+				local inside1 =
+					p1:IsDescendantOf(
+						character
+					)
 
-				p0 = a0.Parent
-			end
+				if inside0 ~= inside1 then
 
-			if a1
-				and a1.Parent
-				and a1.Parent:IsA("BasePart")
-			then
+					if inside0 then
+						return true, p1
+					else
+						return true, p0
+					end
 
-				p1 = a1.Parent
-			end
-		end
-
-		if p0 and p1 then
-
-			local inside0 =
-				p0:IsDescendantOf(
-					character
-				)
-
-			local inside1 =
-				p1:IsDescendantOf(
-					character
-				)
-
-			if inside0 ~= inside1 then
-
-				if inside0 then
-					return true, p1
-				else
-					return true, p0
 				end
+
 			end
+
 		end
+
 	end
 
 	return false, nil
+
 end
 
 -- =========================================================
@@ -579,6 +844,7 @@ local function DetectCarry()
 	) then
 
 		return true, character
+
 	end
 
 	if CheckCarryTags(
@@ -586,6 +852,7 @@ local function DetectCarry()
 	) then
 
 		return true, character
+
 	end
 
 	local toolFound,
@@ -598,27 +865,27 @@ local function DetectCarry()
 		return true, tool
 	end
 
-	for _, object in ipairs(
-		character:GetDescendants()
-	) do
+	for _, object in
+		ipairs(
+			character:GetDescendants()
+		) do
 
-		if
-			CheckCarryAttributes(
-				object
-			)
-		then
-
-			return true, object
-		end
-
-		if
-			CheckCarryTags(
-				object
-			)
-		then
+		if CheckCarryAttributes(
+			object
+		) then
 
 			return true, object
+
 		end
+
+		if CheckCarryTags(
+			object
+		) then
+
+			return true, object
+
+		end
+
 	end
 
 	local found,
@@ -632,6 +899,7 @@ local function DetectCarry()
 	end
 
 	return false, nil
+
 end
 
 -- =========================================================
@@ -655,6 +923,7 @@ local function GetDesiredSpeed()
 			State.TargetSpeed
 		)
 		or Config.DEFAULT_SPEED
+
 end
 
 local function ApplySpeed()
@@ -686,6 +955,7 @@ local function ApplySpeed()
 	then
 
 		return true
+
 	end
 
 	local success =
@@ -697,6 +967,7 @@ local function ApplySpeed()
 		end)
 
 	return success
+
 end
 
 -- =========================================================
@@ -724,6 +995,39 @@ local function UpdateCarryState()
 
 	ApplySpeed()
 	RefreshStatus()
+
+end
+
+-- =========================================================
+-- CARRY SCAN
+-- =========================================================
+
+local function ScheduleCarryScan()
+
+	if not State.Alive
+		or State.CarryScanPending
+	then
+
+		return
+
+	end
+
+	State.CarryScanPending =
+		true
+
+	task.defer(
+		function()
+
+			State.CarryScanPending =
+				false
+
+			if State.Alive then
+				UpdateCarryState()
+			end
+
+		end
+	)
+
 end
 
 -- =========================================================
@@ -752,16 +1056,21 @@ local function PrepareCharacter(
 			)
 
 			return
+
 		end
 
 		RegisterRecovery()
+
 	end
 
 	State.Preparing =
 		true
 
-	State.CharacterGeneration += 1
-	State.PreparationToken += 1
+	State.CharacterGeneration +=
+		1
+
+	State.PreparationToken +=
+		1
 
 	local generation =
 		State.CharacterGeneration
@@ -791,6 +1100,9 @@ local function PrepareCharacter(
 	State.OriginalWalkSpeed =
 		nil
 
+	State.CarryScanPending =
+		false
+
 	SetStatus(
 		"CARREGANDO..."
 	)
@@ -807,19 +1119,24 @@ local function PrepareCharacter(
 		token
 	) then
 
-		State.Preparing = false
+		State.Preparing =
+			false
+
 		return
+
 	end
 
 	if not humanoid then
 
-		State.Preparing = false
+		State.Preparing =
+			false
 
 		SetStatus(
 			"ERRO HUMANOID"
 		)
 
 		return
+
 	end
 
 	State.OriginalWalkSpeed =
@@ -837,19 +1154,24 @@ local function PrepareCharacter(
 		token
 	) then
 
-		State.Preparing = false
+		State.Preparing =
+			false
+
 		return
+
 	end
 
 	if not root then
 
-		State.Preparing = false
+		State.Preparing =
+			false
 
 		SetStatus(
 			"ERRO ROOT"
 		)
 
 		return
+
 	end
 
 	State.Humanoid =
@@ -858,21 +1180,12 @@ local function PrepareCharacter(
 	State.RootPart =
 		root
 
-	-- Detecta mudanças de objetos.
 	SetConnection(
 		Connections.Character,
 		"ChildAdded",
 
 		character.ChildAdded:Connect(
-			function()
-
-				if State.Alive then
-					task.defer(
-						UpdateCarryState
-					)
-				end
-
-			end
+			ScheduleCarryScan
 		)
 	)
 
@@ -881,15 +1194,7 @@ local function PrepareCharacter(
 		"ChildRemoved",
 
 		character.ChildRemoved:Connect(
-			function()
-
-				if State.Alive then
-					task.defer(
-						UpdateCarryState
-					)
-				end
-
-			end
+			ScheduleCarryScan
 		)
 	)
 
@@ -898,15 +1203,7 @@ local function PrepareCharacter(
 		"DescendantAdded",
 
 		character.DescendantAdded:Connect(
-			function()
-
-				if State.Alive then
-					task.defer(
-						UpdateCarryState
-					)
-				end
-
-			end
+			ScheduleCarryScan
 		)
 	)
 
@@ -915,19 +1212,10 @@ local function PrepareCharacter(
 		"DescendantRemoving",
 
 		character.DescendantRemoving:Connect(
-			function()
-
-				if State.Alive then
-					task.defer(
-						UpdateCarryState
-					)
-				end
-
-			end
+			ScheduleCarryScan
 		)
 	)
 
-	-- Guarda da velocidade.
 	SetConnection(
 		Connections.Character,
 		"WalkSpeed",
@@ -943,6 +1231,7 @@ local function PrepareCharacter(
 				then
 
 					return
+
 				end
 
 				if not ValidCharacter(
@@ -952,6 +1241,7 @@ local function PrepareCharacter(
 				) then
 
 					return
+
 				end
 
 				if humanoid.Health <= 0 then
@@ -964,7 +1254,6 @@ local function PrepareCharacter(
 		)
 	)
 
-	-- Morte.
 	SetConnection(
 		Connections.Character,
 		"Died",
@@ -972,8 +1261,11 @@ local function PrepareCharacter(
 		humanoid.Died:Connect(
 			function()
 
-				State.Carrying = false
-				State.CarriedObject = nil
+				State.Carrying =
+					false
+
+				State.CarriedObject =
+					nil
 
 				SetStatus(
 					"MORTO • AGUARDANDO"
@@ -990,13 +1282,22 @@ local function PrepareCharacter(
 		false
 
 	RefreshStatus()
+
+	Debug(
+		"Personagem preparado."
+	)
+
 end
 
 -- =========================================================
--- INPUT VELOCIDADE
+-- VELOCIDADE
 -- =========================================================
 
 local function SetTargetSpeed()
+
+	if not State.Alive then
+		return
+	end
 
 	local text =
 		string.gsub(
@@ -1015,6 +1316,7 @@ local function SetTargetSpeed()
 		RefreshStatus()
 
 		return
+
 	end
 
 	local value =
@@ -1046,18 +1348,18 @@ local function SetTargetSpeed()
 		)
 
 		return
+
 	end
 
 	State.TargetSpeed =
 		speed
 
 	SpeedBox.Text =
-		tostring(
-			speed
-		)
+		tostring(speed)
 
 	ApplySpeed()
 	RefreshStatus()
+
 end
 
 ApplyButton.Activated:Connect(
@@ -1098,9 +1400,7 @@ Toggle.Activated:Connect(
 
 			if humanoid
 				and humanoid.Parent
-				and IsFiniteNumber(
-					original
-				)
+				and IsFiniteNumber(original)
 			then
 
 				pcall(function()
@@ -1111,10 +1411,232 @@ Toggle.Activated:Connect(
 				end)
 
 			end
+
 		end
 
 		RefreshStatus()
+
 	end
+)
+
+-- =========================================================
+-- OTIMIZAÇÃO
+-- =========================================================
+
+local function OptimizeGraphics()
+
+	if not State.Alive then
+		return
+	end
+
+	if State.Optimizing then
+		return
+	end
+
+	State.Optimizing = true
+	State.Optimized = false
+
+	OptimizeButton.Text =
+		"OTIMIZANDO..."
+
+	SetStatus(
+		"OTIMIZANDO..."
+	)
+
+	-- Qualidade gráfica salva do cliente.
+	pcall(function()
+
+		local settings =
+			UserSettings():GetService(
+				"UserGameSettings"
+			)
+
+		settings.SavedQualityLevel =
+			Enum.SavedQualitySetting.QualityLevel1
+
+	end)
+
+	-- Desliga pós-efeitos.
+	pcall(function()
+
+		for _, effect in
+			ipairs(
+				Lighting:GetChildren()
+			) do
+
+			if effect:IsA(
+				"BloomEffect"
+			)
+			or effect:IsA(
+				"BlurEffect"
+			)
+			or effect:IsA(
+				"ColorCorrectionEffect"
+			)
+			or effect:IsA(
+				"SunRaysEffect"
+			)
+			or effect:IsA(
+				"DepthOfFieldEffect"
+			)
+			or effect:IsA(
+				"Atmosphere"
+			)
+			then
+
+				if effect:IsA(
+					"Atmosphere"
+				) then
+
+					effect.Density = 0
+					effect.Haze = 0
+					effect.Glare = 0
+
+				else
+
+					effect.Enabled = false
+
+				end
+
+			end
+
+		end
+
+	end)
+
+	-- Terrain.
+	pcall(function()
+
+		local terrain =
+			workspace.Terrain
+
+		terrain.Decoration =
+			false
+
+	end)
+
+	task.spawn(
+		function()
+
+			local objects =
+				workspace:GetDescendants()
+
+			local count = 0
+
+			for _, object in
+				ipairs(objects)
+			do
+
+				if not State.Alive then
+
+					State.Optimizing =
+						false
+
+					return
+
+				end
+
+				pcall(function()
+
+					-- Partículas
+					if object:IsA(
+						"ParticleEmitter"
+					) then
+
+						object.Enabled =
+							false
+
+					-- Trail
+					elseif object:IsA(
+						"Trail"
+					) then
+
+						object.Enabled =
+							false
+
+					-- Beam
+					elseif object:IsA(
+						"Beam"
+					) then
+
+						object.Enabled =
+							false
+
+					-- Smoke
+					elseif object:IsA(
+						"Smoke"
+					) then
+
+						object.Enabled =
+							false
+
+					-- Fire
+					elseif object:IsA(
+						"Fire"
+					) then
+
+						object.Enabled =
+							false
+
+					-- Sparkles
+					elseif object:IsA(
+						"Sparkles"
+					) then
+
+						object.Enabled =
+							false
+
+					-- Sombras
+					elseif object:IsA(
+						"BasePart"
+					) then
+
+						object.CastShadow =
+							false
+
+					end
+
+				end)
+
+				count += 1
+
+				-- Divide a carga.
+				if count >=
+					Config.OPTIMIZE_BATCH
+				then
+
+					count = 0
+
+					task.wait(
+						Config.OPTIMIZE_DELAY
+					)
+
+				end
+
+			end
+
+			if not State.Alive then
+				return
+			end
+
+			State.Optimizing =
+				false
+
+			State.Optimized =
+				true
+
+			OptimizeButton.Text =
+				"OTIMIZADO"
+
+			RefreshStatus()
+
+		end
+	)
+
+end
+
+OptimizeButton.Activated:Connect(
+	OptimizeGraphics
 )
 
 -- =========================================================
@@ -1137,6 +1659,7 @@ then
 				then
 
 					return
+
 				end
 
 				local humanoid =
@@ -1154,6 +1677,7 @@ then
 				then
 
 					return
+
 				end
 
 				if not IsFiniteNumber(
@@ -1161,6 +1685,7 @@ then
 				) then
 
 					return
+
 				end
 
 				local velocity =
@@ -1171,6 +1696,7 @@ then
 				) then
 
 					return
+
 				end
 
 				local moveVelocity =
@@ -1181,6 +1707,7 @@ then
 				) then
 
 					return
+
 				end
 
 				local dt =
@@ -1221,6 +1748,7 @@ then
 				then
 
 					return
+
 				end
 
 				local horizontal =
@@ -1245,13 +1773,15 @@ then
 
 				if
 					math.abs(
-						newX - velocity.X
+						newX -
+						velocity.X
 					) > 0.05
 
 					or
 
 					math.abs(
-						newZ - velocity.Z
+						newZ -
+						velocity.Z
 					) > 0.05
 				then
 
@@ -1327,6 +1857,7 @@ SetConnection(
 			then
 
 				return
+
 			end
 
 			local humanoid =
@@ -1349,22 +1880,39 @@ SetConnection(
 
 			end
 
-			State.CharacterGeneration += 1
-			State.PreparationToken += 1
+			State.CharacterGeneration +=
+				1
+
+			State.PreparationToken +=
+				1
 
 			DisconnectGroup(
 				Connections.Character
 			)
 
-			State.Character = nil
-			State.Humanoid = nil
-			State.RootPart = nil
+			State.Character =
+				nil
 
-			State.Carrying = false
-			State.CarriedObject = nil
-			State.OriginalWalkSpeed = nil
+			State.Humanoid =
+				nil
 
-			State.Preparing = false
+			State.RootPart =
+				nil
+
+			State.Carrying =
+				false
+
+			State.CarriedObject =
+				nil
+
+			State.OriginalWalkSpeed =
+				nil
+
+			State.Preparing =
+				false
+
+			State.CarryScanPending =
+				false
 
 			SetStatus(
 				"PERSONAGEM REMOVIDO"
@@ -1395,11 +1943,10 @@ task.spawn(
 				Player.Character
 
 			if not character then
-				RefreshStatus()
-				continue
-			end
 
-			if character
+				RefreshStatus()
+
+			elseif character
 				~= State.Character
 			then
 
@@ -1412,10 +1959,7 @@ task.spawn(
 
 				end
 
-				continue
-			end
-
-			if not State.Humanoid
+			elseif not State.Humanoid
 				or not State.Humanoid.Parent
 			then
 
@@ -1428,10 +1972,7 @@ task.spawn(
 
 				end
 
-				continue
-			end
-
-			if not State.RootPart
+			elseif not State.RootPart
 				or not State.RootPart.Parent
 			then
 
@@ -1444,18 +1985,20 @@ task.spawn(
 
 				end
 
-				continue
+			else
+
+				UpdateCarryState()
+				ApplySpeed()
+
 			end
 
-			UpdateCarryState()
-			ApplySpeed()
-
 		end
+
 	end
 )
 
 -- =========================================================
--- DRAG
+-- PANEL LIMITS
 -- =========================================================
 
 local function GetPanelLimits()
@@ -1471,6 +2014,7 @@ local function GetPanelLimits()
 		camera.ViewportSize
 
 	return
+
 		math.max(
 			0,
 			viewport.X -
@@ -1482,12 +2026,18 @@ local function GetPanelLimits()
 			viewport.Y -
 				Frame.AbsoluteSize.Y
 		)
+
 end
+
+-- =========================================================
+-- DRAG
+-- =========================================================
 
 Title.InputBegan:Connect(
 	function(input)
 
 		if
+
 			input.UserInputType
 				== Enum.UserInputType.Touch
 
@@ -1495,9 +2045,11 @@ Title.InputBegan:Connect(
 
 			input.UserInputType
 				== Enum.UserInputType.MouseButton1
+
 		then
 
-			State.Dragging = true
+			State.Dragging =
+				true
 
 			State.DragStart =
 				Vector2.new(
@@ -1524,6 +2076,7 @@ UserInputService.InputChanged:Connect(
 		end
 
 		if
+
 			input.UserInputType
 				~= Enum.UserInputType.Touch
 
@@ -1531,6 +2084,7 @@ UserInputService.InputChanged:Connect(
 
 			input.UserInputType
 				~= Enum.UserInputType.MouseMovement
+
 		then
 
 			return
@@ -1596,9 +2150,11 @@ UserInputService.InputEnded:Connect(
 
 			input.UserInputType
 				== Enum.UserInputType.MouseButton1
+
 		then
 
-			State.Dragging = false
+			State.Dragging =
+				false
 
 		end
 
