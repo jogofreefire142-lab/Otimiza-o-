@@ -1,5 +1,5 @@
 -- =========================================================
--- SPEED ULTRA V8.0
+-- SPEED ULTRA V8.2
 -- V8.0 + OTIMIZAÇÃO LEVE 35% REVERSÍVEL
 -- Otimiza apenas os efeitos selecionados em 35%; os outros 65% do visual permanecem intocados.: sem remover texturas, materiais ou sombras
 
@@ -47,7 +47,7 @@ pcall(function()
 		end
 	end
 end)
-local REGISTRY_KEY = "__SPEED_ULTRA_V80_INSTANCE"
+local REGISTRY_KEY = "__SPEED_ULTRA_INSTANCE"
 
 pcall(function()
 	local oldCleanup = Env[REGISTRY_KEY]
@@ -71,6 +71,22 @@ local Config = {
 	-- reaplicar WalkSpeed repetidamente enquanto a interacao fisica ocorre.
 	CARRY_HANDOFF_GRACE = 0.35,
 	CARRY_REAPPLY_INTERVAL = 1.50,
+
+	-- Estabilização adaptativa para objetos carregados de tamanhos diferentes.
+	-- Objetos pequenos não são alterados. Objetos grandes ficam sem massa
+	-- física efetiva durante o carry; os muito grandes também não colidem.
+	CARRY_ADAPTIVE_PHYSICS = true,
+	CARRY_PHYSICS_SCAN_INTERVAL = 0.45,
+	CARRY_MEDIUM_SIZE = 5,
+	CARRY_LARGE_SIZE = 8,
+	CARRY_XL_SIZE = 13,
+	CARRY_MEDIUM_MASS = 35,
+	CARRY_LARGE_MASS = 80,
+	CARRY_XL_MASS = 180,
+	CARRY_LARGE_MASSLESS = true,
+	CARRY_LARGE_NO_COLLISION = true,
+	CARRY_XL_MASSLESS = true,
+	CARRY_XL_NO_COLLISION = true,
 
 	MIN_SPEED = 0,
 	MAX_SPEED = 1000,
@@ -118,7 +134,7 @@ local Config = {
 		"HeavyObject"
 	},
 
-	GUI_NAME = "SpeedUltraV80_2026",
+	GUI_NAME = "SpeedUltra_2026",
 
 	-- Posicao inicial. Depois do arraste, a posicao pode ser lembrada.
 	START_SIDE = "Left", -- "Left" / "Right"
@@ -173,6 +189,13 @@ local State = {
 	LastCarrySpeedApply = 0,
 	CarrySpeedAppliedForCycle = false,
 
+	CarrySizeClass = "NONE",
+	CarrySizeMax = 0,
+	CarryMass = 0,
+	CarryPhysicsContainer = nil,
+	CarryPhysicsOriginals = {},
+	LastCarryPhysicsScan = 0,
+
 	Dragging = false,
 	DragStart = Vector2.zero,
 	PanelStart = Vector2.zero,
@@ -215,7 +238,7 @@ local Title
 
 local function Debug(...)
 	if Config.DEBUG then
-		warn("[SPEED ULTRA V8.0]", ...)
+		warn("[SPEED ULTRA V8.2]", ...)
 	end
 end
 
@@ -297,13 +320,19 @@ end
 -- GUI ANTIGA / LIMPEZA
 -- =========================================================
 
-local oldGui = PlayerGui:FindFirstChild(Config.GUI_NAME)
-
-if oldGui then
-	pcall(function()
-		oldGui:Destroy()
-	end)
-end
+-- Remove qualquer GUI anterior do Speed Ultra, inclusive de versões antigas.
+pcall(function()
+	for _, child in ipairs(PlayerGui:GetChildren()) do
+		if child:IsA("ScreenGui") then
+			local name = child.Name
+			if name == Config.GUI_NAME
+				or string.sub(name, 1, 10) == "SpeedUltra"
+			then
+				child:Destroy()
+			end
+		end
+	end
+end)
 
 -- =========================================================
 -- GUI
@@ -351,7 +380,7 @@ Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -42, 1, 0)
 Title.Position = UDim2.fromOffset(8, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "SPEED ULTRA V8.0"
+Title.Text = "SPEED ULTRA V8.2"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 12
@@ -510,7 +539,12 @@ local function RefreshStatus()
 	end
 
 	if State.Carrying then
-		SetStatus("CARRY • " .. tostring(Config.CARRY_SPEED))
+		local carryClass = State.CarrySizeClass
+		if carryClass == "LARGE" or carryClass == "XL" then
+			SetStatus("CARRY " .. carryClass .. " • " .. tostring(Config.CARRY_SPEED))
+		else
+			SetStatus("CARRY • " .. tostring(Config.CARRY_SPEED))
+		end
 		return
 	end
 
@@ -731,6 +765,295 @@ local function DetectCarry()
 end
 
 -- =========================================================
+-- CARRY PHYSICS / TAMANHO ADAPTATIVO
+-- =========================================================
+
+local function IsExternalCarryObject(object)
+	if not object or not State.Character then
+		return false
+	end
+
+	local ok, external = pcall(function()
+		return object ~= State.Character
+			and not object:IsDescendantOf(State.Character)
+	end)
+
+	return ok and external
+end
+
+local function ResolveCarryContainer(object)
+	if not IsExternalCarryObject(object) then
+		return nil
+	end
+
+	if object:IsA("Model") or object:IsA("Tool") then
+		return object
+	end
+
+	if object:IsA("BasePart") then
+		local model = nil
+		pcall(function()
+			model = object:FindFirstAncestorOfClass("Model")
+		end)
+
+		if model and IsExternalCarryObject(model) then
+			return model
+		end
+
+		return object
+	end
+
+	local model = nil
+	pcall(function()
+		model = object:FindFirstAncestorOfClass("Model")
+	end)
+
+	if model and IsExternalCarryObject(model) then
+		return model
+	end
+
+	return object
+end
+
+local function CollectCarryParts(container)
+	local parts = {}
+
+	if not container then
+		return parts
+	end
+
+	if container:IsA("BasePart") then
+		local connected = nil
+
+		pcall(function()
+			connected = container:GetConnectedParts(true)
+		end)
+
+		if type(connected) == "table" then
+			for _, part in ipairs(connected) do
+				if part
+					and part:IsA("BasePart")
+					and not (State.Character and part:IsDescendantOf(State.Character))
+				then
+					parts[#parts + 1] = part
+				end
+			end
+		end
+
+		if #parts == 0 then
+			parts[1] = container
+		end
+
+		return parts
+	end
+
+	local ok, descendants = pcall(function()
+		return container:GetDescendants()
+	end)
+
+	if ok and descendants then
+		for _, object in ipairs(descendants) do
+			if object:IsA("BasePart")
+				and not (State.Character and object:IsDescendantOf(State.Character))
+			then
+				parts[#parts + 1] = object
+			end
+		end
+	end
+
+	return parts
+end
+
+local function MeasureCarryObject(container)
+	if not container then
+		return 0, 0, "NONE"
+	end
+
+	local parts = CollectCarryParts(container)
+	local maxSize = 0
+	local mass = 0
+
+	local okName, lowerName = pcall(function()
+		return string.lower(container.Name or "")
+	end)
+
+	if not okName then
+		lowerName = ""
+	end
+
+	for _, part in ipairs(parts) do
+		pcall(function()
+			local size = part.Size
+			if typeof(size) == "Vector3" then
+				maxSize = math.max(maxSize, size.X, size.Y, size.Z)
+			end
+		end)
+
+		pcall(function()
+			if not part.Anchored then
+				local partMass = part:GetMass()
+				if IsFiniteNumber(partMass) and partMass > 0 then
+					mass += partMass
+				end
+			end
+		end)
+	end
+
+	-- Para Models, o bounding box e mais representativo do tamanho total.
+	if container:IsA("Model") then
+		pcall(function()
+			local _, boxSize = container:GetBoundingBox()
+			if typeof(boxSize) == "Vector3" then
+				maxSize = math.max(maxSize, boxSize.X, boxSize.Y, boxSize.Z)
+			end
+		end)
+	end
+
+	local namedLarge = lowerName:find("large", 1, true)
+		or lowerName:find("giant", 1, true)
+		or lowerName:find("huge", 1, true)
+		or lowerName:find("mega", 1, true)
+		or lowerName:find("big", 1, true)
+		or lowerName:find("grande", 1, true)
+		or lowerName:find("gigante", 1, true)
+
+	local class
+
+	if maxSize >= Config.CARRY_XL_SIZE
+		or mass >= Config.CARRY_XL_MASS
+	then
+		class = "XL"
+	elseif maxSize >= Config.CARRY_LARGE_SIZE
+		or mass >= Config.CARRY_LARGE_MASS
+		or namedLarge
+	then
+		class = "LARGE"
+	elseif maxSize >= Config.CARRY_MEDIUM_SIZE
+		or mass >= Config.CARRY_MEDIUM_MASS
+	then
+		class = "MEDIUM"
+	else
+		class = "SMALL"
+	end
+
+	return maxSize, mass, class
+end
+
+local function ClearCarryPhysics()
+	for part, original in pairs(State.CarryPhysicsOriginals) do
+		if part and part.Parent and type(original) == "table" then
+			if original.Massless ~= nil then
+				pcall(function()
+					part.Massless = original.Massless
+				end)
+			end
+
+			if original.CanCollide ~= nil then
+				pcall(function()
+					part.CanCollide = original.CanCollide
+				end)
+			end
+		end
+	end
+
+	State.CarryPhysicsOriginals = {}
+	State.CarryPhysicsContainer = nil
+	State.CarrySizeClass = "NONE"
+	State.CarrySizeMax = 0
+	State.CarryMass = 0
+	State.LastCarryPhysicsScan = 0
+end
+
+local function ApplyCarryPartPhysics(part, class)
+	if not part
+		or not part:IsA("BasePart")
+		or not part.Parent
+		or part.Anchored
+	or (State.Character and part:IsDescendantOf(State.Character))
+	then
+		return
+	end
+
+	if not State.CarryPhysicsOriginals[part] then
+		State.CarryPhysicsOriginals[part] = {
+			Massless = part.Massless,
+			CanCollide = part.CanCollide
+		}
+	end
+
+	if (class == "LARGE" and Config.CARRY_LARGE_MASSLESS)
+		or (class == "XL" and Config.CARRY_XL_MASSLESS)
+	then
+		pcall(function()
+			part.Massless = true
+		end)
+	end
+
+	if (class == "LARGE" and Config.CARRY_LARGE_NO_COLLISION)
+		or (class == "XL" and Config.CARRY_XL_NO_COLLISION)
+	then
+		pcall(function()
+			part.CanCollide = false
+		end)
+	end
+end
+
+local function ApplyCarryPhysics(object, force)
+	if not Config.CARRY_ADAPTIVE_PHYSICS or not object then
+		return
+	end
+
+	local container = ResolveCarryContainer(object)
+
+	if not container then
+		ClearCarryPhysics()
+		return
+	end
+
+	local now = os.clock()
+
+	if not force
+		and container == State.CarryPhysicsContainer
+		and now - State.LastCarryPhysicsScan < Config.CARRY_PHYSICS_SCAN_INTERVAL
+	then
+		return
+	end
+
+	if container ~= State.CarryPhysicsContainer then
+		ClearCarryPhysics()
+		State.CarryPhysicsContainer = container
+	end
+
+	State.LastCarryPhysicsScan = now
+
+	local maxSize, mass, class = MeasureCarryObject(container)
+	State.CarrySizeMax = maxSize
+	State.CarryMass = mass
+	State.CarrySizeClass = class
+
+	if class ~= "LARGE" and class ~= "XL" then
+		return
+	end
+
+	local parts = CollectCarryParts(container)
+	for _, part in ipairs(parts) do
+		ApplyCarryPartPhysics(part, class)
+	end
+end
+
+local function GetCarryGrace()
+	if State.CarrySizeClass == "XL" then
+		return math.max(Config.CARRY_HANDOFF_GRACE, 0.90)
+	elseif State.CarrySizeClass == "LARGE" then
+		return math.max(Config.CARRY_HANDOFF_GRACE, 0.65)
+	elseif State.CarrySizeClass == "MEDIUM" then
+		return math.max(Config.CARRY_HANDOFF_GRACE, 0.45)
+	end
+
+	return Config.CARRY_HANDOFF_GRACE
+end
+
+-- =========================================================
 -- SPEED
 -- =========================================================
 
@@ -767,7 +1090,7 @@ local function ApplySpeed(force)
 	-- ownership/simulacao fisica do objeto.
 	if State.Carrying then
 		local sinceCarry = now - State.CarryStartedAt
-		if sinceCarry >= 0 and sinceCarry < Config.CARRY_HANDOFF_GRACE then
+		if sinceCarry >= 0 and sinceCarry < GetCarryGrace() then
 			return true
 		end
 
@@ -827,6 +1150,11 @@ local function UpdateCarryState(force)
 	if not force
 		and now - State.LastCarryScan < Config.CARRY_SCAN_INTERVAL
 	then
+		-- Mesmo sem nova detecção, atualize apenas a parte física adaptativa
+		-- no intervalo próprio, sem tocar na velocidade.
+		if State.Carrying and State.CarriedObject then
+			ApplyCarryPhysics(State.CarriedObject, false)
+		end
 		return
 	end
 
@@ -843,14 +1171,42 @@ local function UpdateCarryState(force)
 	end
 
 	local wasCarrying = State.Carrying
+	local oldObject = State.CarriedObject
+
 	State.Carrying = carrying
 	State.CarriedObject = object
 
-	if carrying and not wasCarrying then
+	if carrying and (not wasCarrying or object ~= oldObject) then
 		State.CarryStartedAt = now
 		State.LastCarrySpeedApply = 0
 		State.CarrySpeedAppliedForCycle = false
+
+		ApplyCarryPhysics(object, true)
+
+		-- Se a velocidade ja era 255 no instante do encaixe, considere-a
+		-- aplicada e nao force outra escrita depois. Isso e especialmente
+		-- importante para ovos grandes, onde a escrita tardia pode coincidir
+		-- com a estabilizacao da montagem fisica.
+		local humanoid = State.Humanoid
+		local desired = GetDesiredSpeed()
+
+		if humanoid
+			and humanoid.Parent
+			and IsFiniteNumber(desired)
+			and math.abs(humanoid.WalkSpeed - desired) < 0.01
+		then
+			State.CarrySpeedAppliedForCycle = true
+			State.LastCarrySpeedApply = now
+		end
+
+	elseif carrying then
+		ApplyCarryPhysics(object, false)
+
 	elseif not carrying then
+		if wasCarrying then
+			ClearCarryPhysics()
+		end
+
 		State.CarryStartedAt = 0
 		State.LastCarrySpeedApply = 0
 		State.CarrySpeedAppliedForCycle = false
@@ -918,6 +1274,7 @@ local function PrepareCharacter(character, isRecovery)
 	State.CarryStartedAt = 0
 	State.LastCarrySpeedApply = 0
 	State.CarrySpeedAppliedForCycle = false
+	ClearCarryPhysics()
 
 	SetStatus("CARREGANDO...")
 
@@ -1027,6 +1384,7 @@ local function PrepareCharacter(character, isRecovery)
 			State.CarryStartedAt = 0
 			State.LastCarrySpeedApply = 0
 			State.CarrySpeedAppliedForCycle = false
+			ClearCarryPhysics()
 			SetStatus("MORTO • AGUARDANDO")
 		end)
 	)
@@ -1124,7 +1482,7 @@ end))
 -- POSICAO / LADO
 -- =========================================================
 
-local POSITION_KEY = "__SPEED_ULTRA_V80_POSITION"
+local POSITION_KEY = "__SPEED_ULTRA_V81_POSITION"
 
 local function GetPanelLimits()
 	local camera = workspace.CurrentCamera
@@ -1267,11 +1625,11 @@ local function SetCollapsed(collapsed)
 	if collapsed then
 		Frame.Size = CollapsedSize
 		CollapseButton.Text = "+"
-		Title.Text = "SPEED ULTRA V8.0"
+		Title.Text = "SPEED ULTRA V8.2"
 	else
 		Frame.Size = ExpandedSize
 		CollapseButton.Text = "—"
-		Title.Text = "SPEED ULTRA V8.0"
+		Title.Text = "SPEED ULTRA V8.2"
 	end
 
 	local x = Frame.AbsolutePosition.X
@@ -1783,6 +2141,7 @@ SetConnection(
 		State.PreparationToken += 1
 
 		DisconnectGroup(Connections.Character)
+		ClearCarryPhysics()
 
 		State.Character = nil
 		State.Humanoid = nil
@@ -1864,6 +2223,7 @@ local function Cleanup(reason)
 		end)
 	end
 
+	ClearCarryPhysics()
 	DisconnectAll()
 
 
@@ -1906,7 +2266,7 @@ end
 
 RefreshStatus()
 
-Debug("Speed Ultra V8.0 iniciado.")
+Debug("Speed Ultra V8.2 iniciado.")
 
 -- =========================================================
 -- FIM
