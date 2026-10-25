@@ -1,2291 +1,1461 @@
--- =========================================================
--- SPEED ULTRA V8.3
--- V8.2 + CORREÇÃO DE VELOCIDADE NO CARRY
--- Otimiza apenas os efeitos selecionados em 35%; os outros 65% do visual permanecem intocados.: sem remover texturas, materiais ou sombras
+--[[
+    SPEED ULTRA V9.5 — 2026
+    Base inicial modernizada com Rayfield Gen2.
+
+    Incluído nesta versão:
+      • UI responsiva com abas e temas;
+      • salvamento de preferências pela configuração do Rayfield;
+      • otimização VISUAL local e reversível de partículas, trails, fumaça e fogo;
+      • opção para desativar BlurEffect e DepthOfFieldEffect enquanto a otimização estiver ativa;
+      • monitoramento somente de leitura do personagem, saúde, WalkSpeed, FPS aproximado e possíveis marcadores de carry;
+      • encerramento que tenta restaurar as propriedades visuais modificadas;
+      • checklist manual revisada para Update 10 — Halloween Part 2, com fonte comunitária identificada;
+      • seletor manual de objetivos de ovos/evento (não controla o personagem);
+      • novas opções para Beam, Sparkles, Bloom e SunRays;
+      • indicador aproximado de FPS e informações básicas do dispositivo;
+      • varredura incremental para reduzir picos de memória;
+      • controle de intensidade que evita reiniciar a varredura a cada movimento;
+      • token de inicialização antecipado para não abrir abas duplicadas ao reexecutar;
+      • restauração/encerramento da sessão anterior e verificação do token após esperas;
+      • aviso explícito de que não existe modo Anti-Ban implementado nem garantia contra punições.
+
+    Nota: não altera WalkSpeed, colisões, massa ou física do jogo. Não automatiza
+    coleta, teleporte ou interação em servidores públicos. Para mecânicas de movimento
+    e entrega de ovos num jogo próprio, implemente a lógica autorizada no servidor.
+    Segurança: a instância única é proteção contra conflito local, NÃO é Anti-Ban.
+    Compatibilidade: a UI remota usa loadstring e tenta game:HttpGet com fallback
+    request/http_request quando disponível. Exige um ambiente que permita executar
+    Lua remoto; não é um LocalScript padrão do Roblox Studio.
+]]
 
 -- =========================================================
-
-if not game:IsLoaded() then
-	game.Loaded:Wait()
-end
-
-task.wait(0.15)
-
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local CollectionService = game:GetService("CollectionService")
-local Lighting = game:GetService("Lighting")
-
-if not RunService:IsClient() then
-	return
-end
-
-local Player = Players.LocalPlayer
-
-if not Player then
-	return
-end
-
-local PlayerGui = Player:WaitForChild("PlayerGui", 30)
-
-if not PlayerGui then
-	return
-end
-
--- =========================================================
--- AMBIENTE / INSTANCIA UNICA
--- Evita que uma execucao nova deixe conexoes da antiga vivas.
+-- BOOTSTRAP / INSTÂNCIA ÚNICA
+-- Registra a nova execução ANTES de qualquer espera ou download.
+-- Uma execução nova invalida a anterior; a anterior destrói sua janela
+-- assim que retoma caso estivesse no meio do carregamento remoto.
 -- =========================================================
 
 local Env = _G
 pcall(function()
-	if type(getgenv) == "function" then
-		local generated = getgenv()
-		if type(generated) == "table" then
-			Env = generated
-		end
-	end
+    if type(getgenv) == "function" then
+        local env = getgenv()
+        if type(env) == "table" then
+            Env = env
+        end
+    end
 end)
-local REGISTRY_KEY = "__SPEED_ULTRA_INSTANCE"
 
-pcall(function()
-	local oldCleanup = Env[REGISTRY_KEY]
-	if type(oldCleanup) == "function" then
-		oldCleanup("RELOAD")
-	end
-end)
+local REGISTRY_KEY = "__SPEED_ULTRA_INSTANCE"
+local BOOT_KEY = "__SPEED_ULTRA_BOOT_RECORD"
+
+local PreviousBoot = Env[BOOT_KEY]
+if type(PreviousBoot) == "table" then
+    PreviousBoot.cancelled = true
+
+    if type(PreviousBoot.cleanup) == "function" then
+        pcall(PreviousBoot.cleanup, "RELOAD")
+    elseif PreviousBoot.window then
+        pcall(function()
+            local oldWindow = PreviousBoot.window
+            if type(oldWindow.Destroy) == "function" then
+                oldWindow:Destroy()
+            elseif type(oldWindow.Unload) == "function" then
+                oldWindow:Unload()
+            end
+        end)
+    end
+end
+
+local OldCleanup = Env[REGISTRY_KEY]
+if type(OldCleanup) == "function"
+    and not (type(PreviousBoot) == "table" and PreviousBoot.cleanup == OldCleanup)
+then
+    pcall(OldCleanup, "RELOAD")
+end
+
+local Boot = {
+    cancelled = false,
+    cleanup = nil,
+    window = nil,
+}
+Env[BOOT_KEY] = Boot
+
+local function IsCurrentBoot()
+    return not Boot.cancelled and Env[BOOT_KEY] == Boot
+end
+
+local function ReleaseBootReservation()
+    if Env[BOOT_KEY] == Boot then
+        Boot.cancelled = true
+        Env[BOOT_KEY] = nil
+    end
+end
+
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+if not IsCurrentBoot() then
+    return
+end
+
+task.wait(0.1)
+if not IsCurrentBoot() then
+    return
+end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local CollectionService = game:GetService("CollectionService")
+local UserInputService = game:GetService("UserInputService")
+
+if not RunService:IsClient() then
+    ReleaseBootReservation()
+    return
+end
+if not IsCurrentBoot() then
+    return
+end
+
+local Player = Players.LocalPlayer
+if not Player then
+    ReleaseBootReservation()
+    return
+end
+if not IsCurrentBoot() then
+    return
+end
 
 -- =========================================================
--- CONFIGURACAO
+-- CARREGAMENTO DA UI
+-- Fonte oficial Rayfield Gen2: https://sirius.menu/gen2
+-- =========================================================
+
+local Rayfield
+local function FetchRemoteSource(url)
+    local errors = {}
+
+    -- Caminho preferido, igual ao exemplo oficial do Rayfield Gen2.
+    local gameHttpOk, gameHttpBody = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if gameHttpOk and type(gameHttpBody) == "string" and #gameHttpBody > 0 then
+        return gameHttpBody
+    end
+    errors[#errors + 1] = "game:HttpGet não retornou conteúdo"
+
+    -- Fallback opcional para ambientes que fornecem request/http_request.
+    local requestFunction
+    pcall(function() requestFunction = request end)
+    if type(requestFunction) ~= "function" then
+        pcall(function() requestFunction = http_request end)
+    end
+
+    if type(requestFunction) == "function" then
+        local requestOk, response = pcall(function()
+            return requestFunction({ Url = url, Method = "GET" })
+        end)
+        if requestOk and type(response) == "table"
+            and type(response.Body) == "string" and #response.Body > 0
+            and (response.Success ~= false)
+        then
+            return response.Body
+        end
+        errors[#errors + 1] = "request/http_request falhou"
+    end
+
+    error(table.concat(errors, "; "))
+end
+
+local loadOk, loadResult = pcall(function()
+    if type(loadstring) ~= "function" then
+        error("Este ambiente não disponibiliza loadstring; não é possível iniciar o Rayfield remoto.")
+    end
+
+    local source = FetchRemoteSource("https://sirius.menu/gen2")
+    if not IsCurrentBoot() then
+        return nil
+    end
+
+    local compileOk, chunkOrError = pcall(loadstring, source)
+    if not compileOk or type(chunkOrError) ~= "function" then
+        error("Não foi possível compilar a biblioteca Rayfield Gen2: " .. tostring(chunkOrError))
+    end
+    if not IsCurrentBoot() then
+        return nil
+    end
+    return chunkOrError()
+end)
+
+if not IsCurrentBoot() then
+    return
+end
+
+if loadOk then
+    Rayfield = loadResult
+else
+    warn("[SPEED ULTRA V9.5] Não foi possível carregar Rayfield Gen2: " .. tostring(loadResult))
+    ReleaseBootReservation()
+    return
+end
+
+if type(Rayfield) ~= "table" or type(Rayfield.CreateWindow) ~= "function" then
+    warn("[SPEED ULTRA V9.5] Rayfield Gen2 não retornou uma API válida; a interface não foi iniciada.")
+    ReleaseBootReservation()
+    return
+end
+
+-- =========================================================
+-- CONFIGURAÇÃO / ESTADO
 -- =========================================================
 
 local Config = {
-	DEFAULT_SPEED = 255,
-	-- Em objetos fisicos grandes, velocidade muito alta pode provocar
-	-- correcao de rede/recuo. O valor normal continua alto; o modo pesado
-	-- usa um limite mais estavel.
-	CARRY_SPEED = 255,
-	-- O carry usa a mesma velocidade configurada.
-	-- Em vez de reduzir a velocidade para objetos grandes, o script evita
-	-- reaplicar WalkSpeed repetidamente enquanto a interacao fisica ocorre.
-	CARRY_HANDOFF_GRACE = 0.35,
-	CARRY_REAPPLY_INTERVAL = 0.70,
-	CARRY_SPEED_RECOVERY_DELAY = 0.55,
-	CARRY_SPEED_TOLERANCE = 0.50,
-
-	-- Estabilização adaptativa para objetos carregados de tamanhos diferentes.
-	-- Objetos pequenos não são alterados. Objetos grandes ficam sem massa
-	-- física efetiva durante o carry; os muito grandes também não colidem.
-	CARRY_ADAPTIVE_PHYSICS = true,
-	CARRY_PHYSICS_SCAN_INTERVAL = 0.45,
-	CARRY_MEDIUM_SIZE = 5,
-	CARRY_LARGE_SIZE = 8,
-	CARRY_XL_SIZE = 13,
-	CARRY_MEDIUM_MASS = 35,
-	CARRY_LARGE_MASS = 80,
-	CARRY_XL_MASS = 180,
-	CARRY_LARGE_MASSLESS = true,
-	CARRY_LARGE_NO_COLLISION = true,
-	CARRY_XL_MASSLESS = true,
-	CARRY_XL_NO_COLLISION = true,
-
-	MIN_SPEED = 0,
-	MAX_SPEED = 1000,
-
-	MOVEMENT_MODE = "WalkSpeed", -- "WalkSpeed" ou "Hybrid"
-
-	ACCELERATION = 55,
-	DECELERATION = 16,
-
-	MAX_HORIZONTAL_VELOCITY = 1500,
-	MAX_DELTA_TIME = 0.10,
-
-	WATCHDOG_INTERVAL = 0.75,
-	CARRY_SCAN_INTERVAL = 0.20,
-
-	RECOVERY_WINDOW = 30,
-	MAX_RECOVERIES = 6,
-	RECOVERY_COOLDOWN = 1,
-
-	LOCK_WALKSPEED = true,
-	SAFE_APPLY = true,
-
-	DETECT_TOOLS = true,
-	DETECT_ATTRIBUTES = true,
-	DETECT_TAGS = true,
-	DETECT_CONSTRAINTS = true,
-
-	CARRY_ATTRIBUTES = {
-		"Carrying",
-		"IsCarrying",
-		"HasCarry",
-		"CarryingObject",
-		"IsCarryingObject",
-		"Holding",
-		"IsHolding",
-		"HasObject"
-	},
-
-	CARRY_TAGS = {
-		"Carry",
-		"Carried",
-		"CarryObject",
-		"Carrying",
-		"Held",
-		"HeavyObject"
-	},
-
-	GUI_NAME = "SpeedUltra_2026",
-
-	-- Posicao inicial. Depois do arraste, a posicao pode ser lembrada.
-	START_SIDE = "Left", -- "Left" / "Right"
-	START_Y = 200,
-	EDGE_MARGIN = 10,
-	REMEMBER_POSITION = true,
-
-	-- Otimizacao leve: reduz cerca de 35% dos efeitos selecionados dos efeitos,
-	-- preservando a maior parte do visual do mapa.
-	OPTIMIZATION_STRENGTH = 0.35,
-	QUALITY_DROP_LEVELS = 1,
-	MIN_QUALITY_LEVEL = 5,
-	-- Limite de trabalho por fatia para evitar pico de CPU/renderizacao.
-	OPTIMIZE_FRAME_BUDGET = 0.0025,
-	OPTIMIZE_ONCE = false,
-	OPTIMIZE_MAX_SECONDS = 4,
-
-	DEBUG = false,
-
+    ReductionPercent = 35,
+    OptimizeParticles = true,
+    OptimizeTrails = true,
+    OptimizeAtmospherics = true,
+    OptimizeBeams = true,
+    DisableSparkles = false,
+    DisablePostEffects = true,
+    ReduceBloomSunRays = true,
+    ScanBudgetObjects = 120,
+    MaxScanSeconds = 12,
+    CarryMonitorInterval = 2.5,
+    CarryAttributes = {
+        "Carrying", "IsCarrying", "HasCarry", "CarryingObject",
+        "IsCarryingObject", "Holding", "IsHolding", "HasObject"
+    },
+    CarryTags = {
+        "Carry", "Carried", "CarryObject", "Carrying", "Held", "HeavyObject"
+    }
 }
-
--- =========================================================
--- ESTADO
--- =========================================================
 
 local State = {
-	Alive = true,
-	Enabled = true,
-
-	TargetSpeed = Config.DEFAULT_SPEED,
-
-	Carrying = false,
-	CarriedObject = nil,
-
-	Character = nil,
-	Humanoid = nil,
-	RootPart = nil,
-
-	OriginalWalkSpeed = nil,
-
-	CharacterGeneration = 0,
-	PreparationToken = 0,
-	Preparing = false,
-
-	RecoveryWindowStart = os.clock(),
-	RecoveryCount = 0,
-	LastRecovery = 0,
-
-	CarryScanPending = false,
-	LastCarryScan = 0,
-	CarryStartedAt = 0,
-	LastCarrySpeedApply = 0,
-	CarrySpeedAppliedForCycle = false,
-	CarrySpeedRecoveryPending = false,
-
-	CarrySizeClass = "NONE",
-	CarrySizeMax = 0,
-	CarryMass = 0,
-	CarryPhysicsContainer = nil,
-	CarryPhysicsOriginals = {},
-	LastCarryPhysicsScan = 0,
-
-	Dragging = false,
-	DragStart = Vector2.zero,
-	PanelStart = Vector2.zero,
-
-	Camera = nil,
-
-	Optimizing = false,
-	Optimized = false,
-	OptimizeToken = 0,
-	OptimizationGeneration = 0,
-	OptimizationOriginals = {},
-	OptimizationOriginalQuality = nil,
-
-	Collapsed = false,
-	ApplyingSpeed = false,
-	CleaningUp = false
+    Alive = true,
+    Cleaning = false,
+    UIReady = false,
+    ControlsUpdating = false,
+    VisualOptimization = false,
+    Optimizing = false,
+    CollectingPending = false,
+    PendingDrainRunning = false,
+    OptimizeToken = 0,
+    -- Chaves fracas evitam reter instâncias temporárias de efeitos já destruídos.
+    OriginalProperties = setmetatable({}, { __mode = "k" }),
+    ProcessedObjects = setmetatable({}, { __mode = "k" }),
+    PendingObjects = setmetatable({}, { __mode = "k" }),
+    Stats = {
+        ObjectsVisited = 0,
+        CompatibleEffects = 0,
+        LastDuration = 0,
+        LastPartial = false,
+        FPS = 0,
+        FPSUpdatedAt = 0,
+    },
+    MonitorCarry = true,
+    LastCarryDetected = false,
+    LastCarryObject = nil,
+    CurrentCharacter = nil,
+    CurrentHumanoid = nil,
+    CurrentRoot = nil,
 }
 
-local Connections = {
-	Global = {},
-	Character = {},
-	Camera = {},
-	Gui = {}
-}
+local Connections = {}
+local Window
+local StatusText
+local OperationText
+local VisualToggle
+local ReductionSlider
+local ParticlesToggle
+local TrailsToggle
+local AtmosphericsToggle
+local PostEffectsToggle
+local BeamsToggle
+local SparklesToggle
+local BloomSunRaysToggle
+local FpsText
+local DeviceText
+local ObjectiveText
+local ObjectiveDropdown
 
-local Frame
-local ScreenGui
-local Status
-local SpeedBox
-local Toggle
-local OptimizeButton
-local CollapseButton
-local SideButton
-local Body
-local Title
-
--- =========================================================
--- DEBUG
--- =========================================================
-
-local function Debug(...)
-	if Config.DEBUG then
-		warn("[SPEED ULTRA V8.3]", ...)
-	end
-end
-
--- =========================================================
--- CONNECTION MANAGER
--- =========================================================
-
-local function Disconnect(connection)
-	if not connection then
-		return
-	end
-
-	pcall(function()
-		connection:Disconnect()
-	end)
-end
-
-local function DisconnectGroup(group)
-	for key, connection in pairs(group) do
-		Disconnect(connection)
-		group[key] = nil
-	end
+local function AddConnection(connection)
+    Connections[#Connections + 1] = connection
+    return connection
 end
 
 local function DisconnectAll()
-	DisconnectGroup(Connections.Global)
-	DisconnectGroup(Connections.Character)
-	DisconnectGroup(Connections.Camera)
-	DisconnectGroup(Connections.Gui)
+    for _, connection in ipairs(Connections) do
+        pcall(function()
+            connection:Disconnect()
+        end)
+    end
+    table.clear(Connections)
 end
 
-local function SetConnection(group, key, connection)
-	Disconnect(group[key])
-	group[key] = connection
+local function UpdateStatus(text)
+    if not State.Alive or not StatusText then
+        return
+    end
+    pcall(function()
+        StatusText:Set(text)
+    end)
 end
 
--- =========================================================
--- SEGURANCA NUMERICA
--- =========================================================
-
-local function IsFiniteNumber(value)
-	return type(value) == "number"
-		and value == value
-		and value ~= math.huge
-		and value ~= -math.huge
-end
-
-local function IsFiniteVector3(value)
-	if typeof(value) ~= "Vector3" then
-		return false
-	end
-
-	return IsFiniteNumber(value.X)
-		and IsFiniteNumber(value.Y)
-		and IsFiniteNumber(value.Z)
-end
-
-local function NormalizeSpeed(value)
-	if not IsFiniteNumber(value) then
-		return nil
-	end
-
-	return math.clamp(value, Config.MIN_SPEED, Config.MAX_SPEED)
-end
-
-local function SafeText(label, value)
-	if not State.Alive or not label then
-		return
-	end
-
-	pcall(function()
-		if label.Parent then
-			label.Text = tostring(value)
-		end
-	end)
+local function UpdateOperationStatus(text)
+    if not State.Alive or not OperationText then
+        return
+    end
+    pcall(function()
+        OperationText:Set(text)
+    end)
 end
 
 -- =========================================================
--- GUI ANTIGA / LIMPEZA
--- =========================================================
-
--- Remove qualquer GUI anterior do Speed Ultra, inclusive de versões antigas.
-pcall(function()
-	for _, child in ipairs(PlayerGui:GetChildren()) do
-		if child:IsA("ScreenGui") then
-			local name = child.Name
-			if name == Config.GUI_NAME
-				or string.sub(name, 1, 10) == "SpeedUltra"
-			then
-				child:Destroy()
-			end
-		end
-	end
-end)
-
--- =========================================================
--- GUI
--- =========================================================
-
-ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = Config.GUI_NAME
-ScreenGui.ResetOnSpawn = false
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-pcall(function()
-	ScreenGui.DisplayOrder = 999
-end)
-
-ScreenGui.Parent = PlayerGui
-
-Frame = Instance.new("Frame")
-Frame.Name = "Main"
-Frame.Size = UDim2.fromOffset(225, 190)
-Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-Frame.BorderSizePixel = 0
-Frame.Active = true
-Frame.ClipsDescendants = true
-Frame.Parent = ScreenGui
-
-local FrameCorner = Instance.new("UICorner")
-FrameCorner.CornerRadius = UDim.new(0, 9)
-FrameCorner.Parent = Frame
-
-local Accent = Instance.new("Frame")
-Accent.Size = UDim2.new(1, 0, 0, 3)
-Accent.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
-Accent.BorderSizePixel = 0
-Accent.Parent = Frame
-
-local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 30)
-Header.Position = UDim2.fromOffset(0, 3)
-Header.BackgroundTransparency = 1
-Header.Active = true
-Header.Parent = Frame
-
-Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -42, 1, 0)
-Title.Position = UDim2.fromOffset(8, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "SPEED ULTRA V8.3"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 12
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Active = true
-Title.Parent = Header
-
-CollapseButton = Instance.new("TextButton")
-CollapseButton.Size = UDim2.fromOffset(28, 24)
-CollapseButton.Position = UDim2.new(1, -34, 0, 3)
-CollapseButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-CollapseButton.BorderSizePixel = 0
-CollapseButton.Text = "—"
-CollapseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CollapseButton.Font = Enum.Font.SourceSansBold
-CollapseButton.TextSize = 14
-CollapseButton.AutoButtonColor = true
-CollapseButton.Parent = Header
-
-local CollapseCorner = Instance.new("UICorner")
-CollapseCorner.CornerRadius = UDim.new(0, 5)
-CollapseCorner.Parent = CollapseButton
-
-Body = Instance.new("Frame")
-Body.Name = "Body"
-Body.Size = UDim2.new(1, -10, 1, -38)
-Body.Position = UDim2.fromOffset(5, 34)
-Body.BackgroundTransparency = 1
-Body.Parent = Frame
-
-SpeedBox = Instance.new("TextBox")
-SpeedBox.Size = UDim2.fromOffset(85, 29)
-SpeedBox.Position = UDim2.fromOffset(5, 3)
-SpeedBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-SpeedBox.BorderSizePixel = 0
-SpeedBox.Text = tostring(State.TargetSpeed)
-SpeedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedBox.Font = Enum.Font.SourceSans
-SpeedBox.TextSize = 16
-SpeedBox.ClearTextOnFocus = false
-SpeedBox.TextEditable = true
-SpeedBox.Parent = Body
-
-local SpeedCorner = Instance.new("UICorner")
-SpeedCorner.CornerRadius = UDim.new(0, 5)
-SpeedCorner.Parent = SpeedBox
-
-local ApplyButton = Instance.new("TextButton")
-ApplyButton.Size = UDim2.fromOffset(95, 29)
-ApplyButton.Position = UDim2.fromOffset(95, 3)
-ApplyButton.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
-ApplyButton.BorderSizePixel = 0
-ApplyButton.Text = "APLICAR"
-ApplyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ApplyButton.Font = Enum.Font.SourceSansBold
-ApplyButton.TextSize = 12
-ApplyButton.Parent = Body
-
-local ApplyCorner = Instance.new("UICorner")
-ApplyCorner.CornerRadius = UDim.new(0, 5)
-ApplyCorner.Parent = ApplyButton
-
-Toggle = Instance.new("TextButton")
-Toggle.Size = UDim2.fromOffset(85, 27)
-Toggle.Position = UDim2.fromOffset(5, 39)
-Toggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-Toggle.BorderSizePixel = 0
-Toggle.Text = "SISTEMA: ON"
-Toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-Toggle.Font = Enum.Font.SourceSansBold
-Toggle.TextSize = 11
-Toggle.Parent = Body
-
-local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(0, 5)
-ToggleCorner.Parent = Toggle
-
-Status = Instance.new("TextLabel")
-Status.Size = UDim2.fromOffset(130, 27)
-Status.Position = UDim2.fromOffset(95, 39)
-Status.BackgroundTransparency = 1
-Status.Text = "INICIANDO"
-Status.TextColor3 = Color3.fromRGB(170, 170, 170)
-Status.Font = Enum.Font.SourceSans
-Status.TextSize = 10
-Status.TextXAlignment = Enum.TextXAlignment.Left
-Status.TextTruncate = Enum.TextTruncate.AtEnd
-Status.Parent = Body
-
-OptimizeButton = Instance.new("TextButton")
-OptimizeButton.Size = UDim2.fromOffset(120, 27)
-OptimizeButton.Position = UDim2.fromOffset(5, 74)
-OptimizeButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
-OptimizeButton.BorderSizePixel = 0
-OptimizeButton.Text = "OTIMIZA"
-OptimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-OptimizeButton.Font = Enum.Font.SourceSansBold
-OptimizeButton.TextSize = 11
-OptimizeButton.Parent = Body
-
-local OptimizeCorner = Instance.new("UICorner")
-OptimizeCorner.CornerRadius = UDim.new(0, 5)
-OptimizeCorner.Parent = OptimizeButton
-
-SideButton = Instance.new("TextButton")
-SideButton.Size = UDim2.fromOffset(60, 27)
-SideButton.Position = UDim2.fromOffset(130, 74)
-SideButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
-SideButton.BorderSizePixel = 0
-SideButton.Text = "LADO"
-SideButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-SideButton.Font = Enum.Font.SourceSansBold
-SideButton.TextSize = 10
-SideButton.Parent = Body
-
-local SideCorner = Instance.new("UICorner")
-SideCorner.CornerRadius = UDim.new(0, 5)
-SideCorner.Parent = SideButton
-
-
--- =========================================================
--- STATUS
--- =========================================================
-
-local function SetStatus(text)
-	if not State.Alive then
-		return
-	end
-
-	SafeText(Status, text)
-end
-
-local function RefreshStatus()
-	if not State.Alive then
-		return
-	end
-
-
-	if State.Optimizing then
-		SetStatus("OTIMIZANDO...")
-		return
-	end
-
-	if State.Optimized then
-		if State.Carrying then
-			SetStatus("OTIMIZADO 35% • CARRY")
-		else
-			SetStatus("OTIMIZADO 35% • ON")
-		end
-		return
-	end
-
-	if not State.Enabled then
-		SetStatus("DESATIVADO")
-		return
-	end
-
-	if State.Carrying then
-		local carryClass = State.CarrySizeClass
-		if carryClass == "LARGE" or carryClass == "XL" then
-			SetStatus("CARRY " .. carryClass .. " • " .. tostring(Config.CARRY_SPEED))
-		else
-			SetStatus("CARRY • " .. tostring(Config.CARRY_SPEED))
-		end
-		return
-	end
-
-	if not State.Character then
-		SetStatus("AGUARDANDO")
-		return
-	end
-
-	if not State.Humanoid then
-		SetStatus("CARREGANDO")
-		return
-	end
-
-	SetStatus("ATIVO • " .. tostring(State.TargetSpeed))
-end
-
--- =========================================================
--- RECOVERY
--- =========================================================
-
-local function CanRecover()
-	local now = os.clock()
-
-	if now - State.RecoveryWindowStart > Config.RECOVERY_WINDOW then
-		State.RecoveryWindowStart = now
-		State.RecoveryCount = 0
-	end
-
-	if now - State.LastRecovery < Config.RECOVERY_COOLDOWN then
-		return false
-	end
-
-	return State.RecoveryCount < Config.MAX_RECOVERIES
-end
-
-local function RegisterRecovery()
-	local now = os.clock()
-
-	if now - State.RecoveryWindowStart > Config.RECOVERY_WINDOW then
-		State.RecoveryWindowStart = now
-		State.RecoveryCount = 0
-	end
-
-	State.RecoveryCount += 1
-	State.LastRecovery = now
-end
-
--- =========================================================
--- CHARACTER VALIDATION
--- =========================================================
-
-local function ValidCharacter(character, generation, token)
-	return State.Alive
-		and Player.Character == character
-		and State.Character == character
-		and State.CharacterGeneration == generation
-		and State.PreparationToken == token
-end
-
--- =========================================================
--- CARRY ATTRIBUTES
--- =========================================================
-
-local function CheckCarryAttributes(object)
-	if not Config.DETECT_ATTRIBUTES or not object then
-		return false
-	end
-
-	for _, attributeName in ipairs(Config.CARRY_ATTRIBUTES) do
-		local value = nil
-
-		local ok = pcall(function()
-			value = object:GetAttribute(attributeName)
-		end)
-
-		if ok then
-			if value == true then
-				return true
-			end
-
-			if type(value) == "number" and value > 0 then
-				return true
-			end
-
-			if type(value) == "string" and value ~= "" then
-				return true
-			end
-		end
-	end
-
-	return false
-end
-
--- =========================================================
--- CARRY TAGS
--- =========================================================
-
-local function CheckCarryTags(object)
-	if not Config.DETECT_TAGS or not object then
-		return false
-	end
-
-	for _, tagName in ipairs(Config.CARRY_TAGS) do
-		local found = false
-
-		pcall(function()
-			found = CollectionService:HasTag(object, tagName)
-		end)
-
-		if found then
-			return true
-		end
-	end
-
-	return false
-end
-
--- =========================================================
--- CARRY TOOL
--- =========================================================
-
-local function CheckCarryTool(character)
-	if not Config.DETECT_TOOLS then
-		return false, nil
-	end
-
-	for _, child in ipairs(character:GetChildren()) do
-		if child:IsA("Tool") then
-			return true, child
-		end
-	end
-
-	return false, nil
-end
-
--- =========================================================
--- CARRY CONSTRAINT
--- =========================================================
-
-local function CheckCarryConstraint(character)
-	if not Config.DETECT_CONSTRAINTS then
-		return false, nil
-	end
-
-	for _, object in ipairs(character:GetDescendants()) do
-		if object:IsA("WeldConstraint")
-			or object:IsA("Weld")
-			or object:IsA("Motor6D") then
-
-			local p0 = nil
-			local p1 = nil
-
-			pcall(function()
-				p0 = object.Part0
-				p1 = object.Part1
-			end)
-
-			if p0 and p1 then
-				local inside0 = p0:IsDescendantOf(character)
-				local inside1 = p1:IsDescendantOf(character)
-
-				if inside0 ~= inside1 then
-					if inside0 then
-						return true, p1
-					else
-						return true, p0
-					end
-				end
-			end
-		end
-	end
-
-	return false, nil
-end
-
--- =========================================================
--- CARRY DETECTOR
--- =========================================================
-
-local function DetectCarry()
-	local character = State.Character
-
-	if not character or not character.Parent then
-		return false, nil
-	end
-
-	if CheckCarryAttributes(character) then
-		return true, character
-	end
-
-	if CheckCarryTags(character) then
-		return true, character
-	end
-
-	local toolFound, tool = CheckCarryTool(character)
-
-	if toolFound then
-		return true, tool
-	end
-
-	for _, object in ipairs(character:GetDescendants()) do
-		if CheckCarryAttributes(object) then
-			return true, object
-		end
-
-		if CheckCarryTags(object) then
-			return true, object
-		end
-	end
-
-	local found, external = CheckCarryConstraint(character)
-
-	if found then
-		return true, external
-	end
-
-	return false, nil
-end
-
--- =========================================================
--- CARRY PHYSICS / TAMANHO ADAPTATIVO
--- =========================================================
-
-local function IsExternalCarryObject(object)
-	if not object or not State.Character then
-		return false
-	end
-
-	local ok, external = pcall(function()
-		return object ~= State.Character
-			and not object:IsDescendantOf(State.Character)
-	end)
-
-	return ok and external
-end
-
-local function ResolveCarryContainer(object)
-	if not IsExternalCarryObject(object) then
-		return nil
-	end
-
-	if object:IsA("Model") or object:IsA("Tool") then
-		return object
-	end
-
-	if object:IsA("BasePart") then
-		local model = nil
-		pcall(function()
-			model = object:FindFirstAncestorOfClass("Model")
-		end)
-
-		if model and IsExternalCarryObject(model) then
-			return model
-		end
-
-		return object
-	end
-
-	local model = nil
-	pcall(function()
-		model = object:FindFirstAncestorOfClass("Model")
-	end)
-
-	if model and IsExternalCarryObject(model) then
-		return model
-	end
-
-	return object
-end
-
-local function CollectCarryParts(container)
-	local parts = {}
-
-	if not container then
-		return parts
-	end
-
-	if container:IsA("BasePart") then
-		local connected = nil
-
-		pcall(function()
-			connected = container:GetConnectedParts(true)
-		end)
-
-		if type(connected) == "table" then
-			for _, part in ipairs(connected) do
-				if part
-					and part:IsA("BasePart")
-					and not (State.Character and part:IsDescendantOf(State.Character))
-				then
-					parts[#parts + 1] = part
-				end
-			end
-		end
-
-		if #parts == 0 then
-			parts[1] = container
-		end
-
-		return parts
-	end
-
-	local ok, descendants = pcall(function()
-		return container:GetDescendants()
-	end)
-
-	if ok and descendants then
-		for _, object in ipairs(descendants) do
-			if object:IsA("BasePart")
-				and not (State.Character and object:IsDescendantOf(State.Character))
-			then
-				parts[#parts + 1] = object
-			end
-		end
-	end
-
-	return parts
-end
-
-local function MeasureCarryObject(container)
-	if not container then
-		return 0, 0, "NONE"
-	end
-
-	local parts = CollectCarryParts(container)
-	local maxSize = 0
-	local mass = 0
-
-	local okName, lowerName = pcall(function()
-		return string.lower(container.Name or "")
-	end)
-
-	if not okName then
-		lowerName = ""
-	end
-
-	for _, part in ipairs(parts) do
-		pcall(function()
-			local size = part.Size
-			if typeof(size) == "Vector3" then
-				maxSize = math.max(maxSize, size.X, size.Y, size.Z)
-			end
-		end)
-
-		pcall(function()
-			if not part.Anchored then
-				local partMass = part:GetMass()
-				if IsFiniteNumber(partMass) and partMass > 0 then
-					mass += partMass
-				end
-			end
-		end)
-	end
-
-	-- Para Models, o bounding box e mais representativo do tamanho total.
-	if container:IsA("Model") then
-		pcall(function()
-			local _, boxSize = container:GetBoundingBox()
-			if typeof(boxSize) == "Vector3" then
-				maxSize = math.max(maxSize, boxSize.X, boxSize.Y, boxSize.Z)
-			end
-		end)
-	end
-
-	local namedLarge = lowerName:find("large", 1, true)
-		or lowerName:find("giant", 1, true)
-		or lowerName:find("huge", 1, true)
-		or lowerName:find("mega", 1, true)
-		or lowerName:find("big", 1, true)
-		or lowerName:find("grande", 1, true)
-		or lowerName:find("gigante", 1, true)
-
-	local class
-
-	if maxSize >= Config.CARRY_XL_SIZE
-		or mass >= Config.CARRY_XL_MASS
-	then
-		class = "XL"
-	elseif maxSize >= Config.CARRY_LARGE_SIZE
-		or mass >= Config.CARRY_LARGE_MASS
-		or namedLarge
-	then
-		class = "LARGE"
-	elseif maxSize >= Config.CARRY_MEDIUM_SIZE
-		or mass >= Config.CARRY_MEDIUM_MASS
-	then
-		class = "MEDIUM"
-	else
-		class = "SMALL"
-	end
-
-	return maxSize, mass, class
-end
-
-local function ClearCarryPhysics()
-	for part, original in pairs(State.CarryPhysicsOriginals) do
-		if part and part.Parent and type(original) == "table" then
-			if original.Massless ~= nil then
-				pcall(function()
-					part.Massless = original.Massless
-				end)
-			end
-
-			if original.CanCollide ~= nil then
-				pcall(function()
-					part.CanCollide = original.CanCollide
-				end)
-			end
-		end
-	end
-
-	State.CarryPhysicsOriginals = {}
-	State.CarryPhysicsContainer = nil
-	State.CarrySizeClass = "NONE"
-	State.CarrySizeMax = 0
-	State.CarryMass = 0
-	State.LastCarryPhysicsScan = 0
-end
-
-local function ApplyCarryPartPhysics(part, class)
-	if not part
-		or not part:IsA("BasePart")
-		or not part.Parent
-		or part.Anchored
-	or (State.Character and part:IsDescendantOf(State.Character))
-	then
-		return
-	end
-
-	if not State.CarryPhysicsOriginals[part] then
-		State.CarryPhysicsOriginals[part] = {
-			Massless = part.Massless,
-			CanCollide = part.CanCollide
-		}
-	end
-
-	if (class == "LARGE" and Config.CARRY_LARGE_MASSLESS)
-		or (class == "XL" and Config.CARRY_XL_MASSLESS)
-	then
-		pcall(function()
-			part.Massless = true
-		end)
-	end
-
-	if (class == "LARGE" and Config.CARRY_LARGE_NO_COLLISION)
-		or (class == "XL" and Config.CARRY_XL_NO_COLLISION)
-	then
-		pcall(function()
-			part.CanCollide = false
-		end)
-	end
-end
-
-local function ApplyCarryPhysics(object, force)
-	if not Config.CARRY_ADAPTIVE_PHYSICS or not object then
-		return
-	end
-
-	local container = ResolveCarryContainer(object)
-
-	if not container then
-		ClearCarryPhysics()
-		return
-	end
-
-	local now = os.clock()
-
-	if not force
-		and container == State.CarryPhysicsContainer
-		and now - State.LastCarryPhysicsScan < Config.CARRY_PHYSICS_SCAN_INTERVAL
-	then
-		return
-	end
-
-	if container ~= State.CarryPhysicsContainer then
-		ClearCarryPhysics()
-		State.CarryPhysicsContainer = container
-	end
-
-	State.LastCarryPhysicsScan = now
-
-	local maxSize, mass, class = MeasureCarryObject(container)
-	State.CarrySizeMax = maxSize
-	State.CarryMass = mass
-	State.CarrySizeClass = class
-
-	if class ~= "LARGE" and class ~= "XL" then
-		return
-	end
-
-	local parts = CollectCarryParts(container)
-	for _, part in ipairs(parts) do
-		ApplyCarryPartPhysics(part, class)
-	end
-end
-
-local function GetCarryGrace()
-	if State.CarrySizeClass == "XL" then
-		return math.max(Config.CARRY_HANDOFF_GRACE, 0.90)
-	elseif State.CarrySizeClass == "LARGE" then
-		return math.max(Config.CARRY_HANDOFF_GRACE, 0.65)
-	elseif State.CarrySizeClass == "MEDIUM" then
-		return math.max(Config.CARRY_HANDOFF_GRACE, 0.45)
-	end
-
-	return Config.CARRY_HANDOFF_GRACE
-end
-
--- =========================================================
--- SPEED
--- =========================================================
-
-local function GetDesiredSpeed()
-	if State.Carrying then
-		return NormalizeSpeed(Config.CARRY_SPEED) or State.TargetSpeed
-	end
-
-	return NormalizeSpeed(State.TargetSpeed) or Config.DEFAULT_SPEED
-end
-
-local function ApplySpeed(force)
-	if not State.Alive
-		or not State.Enabled
-		or not Config.LOCK_WALKSPEED
-		or State.ApplyingSpeed
-	then
-		return false
-	end
-
-	local humanoid = State.Humanoid
-
-	if not humanoid
-		or not humanoid.Parent
-		or humanoid.Health <= 0
-	then
-		return false
-	end
-
-	local now = os.clock()
-	local desired = GetDesiredSpeed()
-
-	if not IsFiniteNumber(desired) then
-		return false
-	end
-
-	if State.Carrying then
-		-- Pequena janela somente na entrada do carry. Depois dela, a velocidade
-		-- volta a ser mantida em 255 de forma controlada, em vez de ser
-		-- abandonada pelo resto do ciclo.
-		local sinceCarry = now - State.CarryStartedAt
-		if sinceCarry >= 0 and sinceCarry < GetCarryGrace() then
-			return true
-		end
-
-		if not force and now - State.LastCarrySpeedApply < Config.CARRY_REAPPLY_INTERVAL then
-			return true
-		end
-	end
-
-	local current = humanoid.WalkSpeed
-	if IsFiniteNumber(current)
-		and math.abs(current - desired) <= Config.CARRY_SPEED_TOLERANCE
-	then
-		if State.Carrying then
-			State.LastCarrySpeedApply = now
-			State.CarrySpeedAppliedForCycle = true
-		end
-		return true
-	end
-
-	State.ApplyingSpeed = true
-
-	local success = pcall(function()
-		humanoid.WalkSpeed = desired
-	end)
-
-	State.ApplyingSpeed = false
-
-	if success and State.Carrying then
-		State.LastCarrySpeedApply = now
-		State.CarrySpeedAppliedForCycle = true
-	end
-
-	return success
-end
-
--- =========================================================
--- CARRY UPDATE / DEBOUNCE
--- =========================================================
-
-local function UpdateCarryState(force)
-	if not State.Alive or not State.Character then
-		return
-	end
-
-	local now = os.clock()
-
-	if not force
-		and now - State.LastCarryScan < Config.CARRY_SCAN_INTERVAL
-	then
-		-- Mesmo sem nova detecção, atualize apenas a parte física adaptativa
-		-- no intervalo próprio, sem tocar na velocidade.
-		if State.Carrying and State.CarriedObject then
-			ApplyCarryPhysics(State.CarriedObject, false)
-		end
-		return
-	end
-
-	State.LastCarryScan = now
-
-	local carrying, object = false, nil
-
-	local ok = pcall(function()
-		carrying, object = DetectCarry()
-	end)
-
-	if not ok then
-		return
-	end
-
-	local wasCarrying = State.Carrying
-	local oldObject = State.CarriedObject
-
-	State.Carrying = carrying
-	State.CarriedObject = object
-
-	if carrying and (not wasCarrying or object ~= oldObject) then
-		State.CarryStartedAt = now
-		State.CarrySpeedRecoveryPending = false
-		State.LastCarrySpeedApply = 0
-		State.CarrySpeedAppliedForCycle = false
-
-		ApplyCarryPhysics(object, true)
-
-		-- Se a velocidade ja era 255 no instante do encaixe, considere-a
-		-- aplicada e nao force outra escrita depois. Isso e especialmente
-		-- importante para ovos grandes, onde a escrita tardia pode coincidir
-		-- com a estabilizacao da montagem fisica.
-		local humanoid = State.Humanoid
-		local desired = GetDesiredSpeed()
-
-		if humanoid
-			and humanoid.Parent
-			and IsFiniteNumber(desired)
-			and math.abs(humanoid.WalkSpeed - desired) < 0.01
-		then
-			State.CarrySpeedAppliedForCycle = true
-			State.LastCarrySpeedApply = now
-		end
-
-	elseif carrying then
-		ApplyCarryPhysics(object, false)
-
-	elseif not carrying then
-		if wasCarrying then
-			ClearCarryPhysics()
-		end
-
-		State.CarryStartedAt = 0
-		State.LastCarrySpeedApply = 0
-		State.CarrySpeedAppliedForCycle = false
-		State.CarrySpeedRecoveryPending = false
-	end
-
-	ApplySpeed(false)
-	RefreshStatus()
-end
-
-local function ScheduleCarryScan()
-	if not State.Alive or State.CarryScanPending then
-		return
-	end
-
-	State.CarryScanPending = true
-
-	task.defer(function()
-		State.CarryScanPending = false
-
-		if State.Alive then
-			UpdateCarryState(false)
-		end
-	end)
-end
-
--- =========================================================
--- PREPARE CHARACTER
--- =========================================================
-
-local function PrepareCharacter(character, isRecovery)
-	if not State.Alive
-		or not character
-		or not character.Parent
-		or State.Preparing
-	then
-		return
-	end
-
-	if isRecovery then
-		if not CanRecover() then
-			SetStatus("RECUPERACAO LIMITADA")
-			return
-		end
-
-		RegisterRecovery()
-	end
-
-	State.Preparing = true
-	State.CharacterGeneration += 1
-	State.PreparationToken += 1
-
-	local generation = State.CharacterGeneration
-	local token = State.PreparationToken
-
-	DisconnectGroup(Connections.Character)
-
-	State.Character = character
-	State.Humanoid = nil
-	State.RootPart = nil
-	State.Carrying = false
-	State.CarriedObject = nil
-	State.OriginalWalkSpeed = nil
-	State.CarryScanPending = false
-	State.LastCarryScan = 0
-	State.CarryStartedAt = 0
-	State.LastCarrySpeedApply = 0
-	State.CarrySpeedAppliedForCycle = false
-	State.CarrySpeedRecoveryPending = false
-	ClearCarryPhysics()
-
-	SetStatus("CARREGANDO...")
-
-	local humanoid = nil
-
-	pcall(function()
-		humanoid = character:WaitForChild("Humanoid", 15)
-	end)
-
-	if not ValidCharacter(character, generation, token) then
-		State.Preparing = false
-		return
-	end
-
-	if not humanoid then
-		State.Preparing = false
-		SetStatus("ERRO HUMANOID")
-		return
-	end
-
-	local originalSpeed = humanoid.WalkSpeed
-
-	if IsFiniteNumber(originalSpeed) then
-		State.OriginalWalkSpeed = originalSpeed
-	end
-
-	local root = nil
-
-	pcall(function()
-		root = character:WaitForChild("HumanoidRootPart", 15)
-	end)
-
-	if not ValidCharacter(character, generation, token) then
-		State.Preparing = false
-		return
-	end
-
-	if not root then
-		State.Preparing = false
-		SetStatus("ERRO ROOT")
-		return
-	end
-
-	State.Humanoid = humanoid
-	State.RootPart = root
-
-	SetConnection(
-		Connections.Character,
-		"ChildAdded",
-		character.ChildAdded:Connect(ScheduleCarryScan)
-	)
-
-	SetConnection(
-		Connections.Character,
-		"ChildRemoved",
-		character.ChildRemoved:Connect(ScheduleCarryScan)
-	)
-
-	SetConnection(
-		Connections.Character,
-		"DescendantAdded",
-		character.DescendantAdded:Connect(ScheduleCarryScan)
-	)
-
-	SetConnection(
-		Connections.Character,
-		"DescendantRemoving",
-		character.DescendantRemoving:Connect(ScheduleCarryScan)
-	)
-
-	SetConnection(
-		Connections.Character,
-		"WalkSpeed",
-		humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-			if not State.Alive
-				or not State.Enabled
-				or not Config.LOCK_WALKSPEED
-				or State.ApplyingSpeed
-			then
-				return
-			end
-
-			if not ValidCharacter(character, generation, token) then
-				return
-			end
-
-			if humanoid.Health <= 0 then
-				return
-			end
-
-			-- Nao reescreva imediatamente. Agende uma recuperacao pequena
-			-- para devolver 255 sem entrar em loop de propriedades.
-			if State.Carrying then
-				if State.CarrySpeedRecoveryPending then
-					return
-				end
-
-				State.CarrySpeedRecoveryPending = true
-				task.delay(Config.CARRY_SPEED_RECOVERY_DELAY, function()
-					State.CarrySpeedRecoveryPending = false
-
-					if not State.Alive
-						or not State.Carrying
-						or State.Humanoid ~= humanoid
-						or not humanoid.Parent
-					then
-						return
-					end
-
-					ApplySpeed(true)
-				end)
-				return
-			end
-
-			ApplySpeed(false)
-		end)
-	)
-
-	SetConnection(
-		Connections.Character,
-		"Died",
-		humanoid.Died:Connect(function()
-			State.Carrying = false
-			State.CarriedObject = nil
-			State.CarryStartedAt = 0
-			State.LastCarrySpeedApply = 0
-			State.CarrySpeedAppliedForCycle = false
-			State.CarrySpeedRecoveryPending = false
-			ClearCarryPhysics()
-			SetStatus("MORTO • AGUARDANDO")
-		end)
-	)
-
-	UpdateCarryState(true)
-	ApplySpeed()
-
-	State.Preparing = false
-	RefreshStatus()
-
-	Debug("Personagem preparado.")
-end
-
--- =========================================================
--- VELOCIDADE
--- =========================================================
-
-local function SetTargetSpeed()
-	if not State.Alive or not SpeedBox then
-		return
-	end
-
-	local text = ""
-
-	pcall(function()
-		text = string.gsub(SpeedBox.Text, "%s+", "")
-	end)
-
-	if text == "" then
-		SpeedBox.Text = tostring(State.TargetSpeed)
-		RefreshStatus()
-		return
-	end
-
-	local value = tonumber(text)
-	local speed = NormalizeSpeed(value)
-
-	if not speed then
-		SpeedBox.Text = tostring(State.TargetSpeed)
-		SetStatus("VALOR INVALIDO")
-
-		task.delay(1, function()
-			if State.Alive then
-				RefreshStatus()
-			end
-		end)
-
-		return
-	end
-
-	State.TargetSpeed = speed
-	SpeedBox.Text = tostring(speed)
-
-	ApplySpeed()
-	RefreshStatus()
-end
-
-SetConnection(Connections.Gui, "Apply", ApplyButton.Activated:Connect(SetTargetSpeed))
-SetConnection(Connections.Gui, "SpeedFocus", SpeedBox.FocusLost:Connect(SetTargetSpeed))
-
--- =========================================================
--- TOGGLE
--- =========================================================
-
-SetConnection(Connections.Gui, "Toggle", Toggle.Activated:Connect(function()
-	if not State.Alive then
-		return
-	end
-
-	State.Enabled = not State.Enabled
-
-	if State.Enabled then
-		Toggle.Text = "SISTEMA: ON"
-		ApplySpeed()
-	else
-		Toggle.Text = "SISTEMA: OFF"
-
-		local humanoid = State.Humanoid
-		local original = State.OriginalWalkSpeed
-
-		if humanoid
-			and humanoid.Parent
-			and IsFiniteNumber(original)
-		then
-			pcall(function()
-				humanoid.WalkSpeed = original
-			end)
-		end
-	end
-
-	RefreshStatus()
-end))
-
--- =========================================================
--- POSICAO / LADO
--- =========================================================
-
-local POSITION_KEY = "__SPEED_ULTRA_V81_POSITION"
-
-local function GetPanelLimits()
-	local camera = workspace.CurrentCamera
-
-	if not camera or not Frame then
-		return nil
-	end
-
-	local viewport
-	local ok = pcall(function()
-		viewport = camera.ViewportSize
-	end)
-
-	if not ok or typeof(viewport) ~= "Vector2" then
-		return nil
-	end
-
-	local frameSize = Frame.AbsoluteSize
-	local maxX = math.max(0, viewport.X - frameSize.X)
-	local maxY = math.max(0, viewport.Y - frameSize.Y)
-
-	return maxX, maxY
-end
-
-local function ClampPanelPosition(x, y)
-	local maxX, maxY = GetPanelLimits()
-
-	if not maxX or not maxY then
-		return x, y
-	end
-
-	return math.clamp(x, 0, maxX), math.clamp(y, 0, maxY)
-end
-
-local function UpdateSideButton()
-	if not SideButton then
-		return
-	end
-
-	local x = Frame.AbsolutePosition.X
-	local maxX = select(1, GetPanelLimits()) or 0
-
-	if x >= maxX * 0.5 then
-		SideButton.Text = "LADO: DIR"
-	else
-		SideButton.Text = "LADO: ESQ"
-	end
-end
-
-local function SetPanelSide(side)
-	local maxX, maxY = GetPanelLimits()
-
-	if not maxX or not maxY then
-		return
-	end
-
-	local targetX
-
-	if side == "Right" then
-		targetX = math.max(0, maxX - Config.EDGE_MARGIN)
-	else
-		targetX = Config.EDGE_MARGIN
-	end
-
-	local currentY = Frame.AbsolutePosition.Y
-	local targetY = math.clamp(currentY, 0, maxY)
-
-	Frame.Position = UDim2.fromOffset(targetX, targetY)
-	UpdateSideButton()
-
-	if Config.REMEMBER_POSITION then
-		Env[POSITION_KEY] = {
-			x = targetX,
-			y = targetY
-		}
-	end
-end
-
-local function ApplySavedOrDefaultPosition()
-	local maxX, maxY = GetPanelLimits()
-
-	if not maxX or not maxY then
-		return
-	end
-
-	local x
-	local y
-
-	if Config.REMEMBER_POSITION
-		and type(Env[POSITION_KEY]) == "table"
-		and IsFiniteNumber(Env[POSITION_KEY].x)
-		and IsFiniteNumber(Env[POSITION_KEY].y)
-	then
-		x = Env[POSITION_KEY].x
-		y = Env[POSITION_KEY].y
-	else
-		x = Config.EDGE_MARGIN
-		y = Config.START_Y
-
-		if Config.START_SIDE == "Right" then
-			x = maxX - Config.EDGE_MARGIN
-		end
-	end
-
-	x, y = ClampPanelPosition(x, y)
-	Frame.Position = UDim2.fromOffset(x, y)
-	UpdateSideButton()
-end
-
-SetConnection(Connections.Gui, "Side", SideButton.Activated:Connect(function()
-	if not State.Alive then
-		return
-	end
-
-	local maxX = select(1, GetPanelLimits()) or 0
-	local currentX = Frame.AbsolutePosition.X
-
-	if currentX < maxX * 0.5 then
-		SetPanelSide("Right")
-	else
-		SetPanelSide("Left")
-	end
-end))
-
--- =========================================================
--- RECOLHER / ABRIR
--- =========================================================
-
-local ExpandedSize = UDim2.fromOffset(225, 190)
-local CollapsedSize = UDim2.fromOffset(150, 35)
-
-local function SetCollapsed(collapsed)
-	if not State.Alive then
-		return
-	end
-
-	State.Collapsed = collapsed
-	Body.Visible = not collapsed
-
-	if collapsed then
-		Frame.Size = CollapsedSize
-		CollapseButton.Text = "+"
-		Title.Text = "SPEED ULTRA V8.3"
-	else
-		Frame.Size = ExpandedSize
-		CollapseButton.Text = "—"
-		Title.Text = "SPEED ULTRA V8.3"
-	end
-
-	local x = Frame.AbsolutePosition.X
-	local y = Frame.AbsolutePosition.Y
-	x, y = ClampPanelPosition(x, y)
-	Frame.Position = UDim2.fromOffset(x, y)
-	UpdateSideButton()
-end
-
-SetConnection(Connections.Gui, "Collapse", CollapseButton.Activated:Connect(function()
-	SetCollapsed(not State.Collapsed)
-end))
-
--- =========================================================
--- OTIMIZACAO
+-- OTIMIZAÇÃO VISUAL REVERSÍVEL
 -- =========================================================
 
 local function SaveOriginal(object, property, value)
-	if not object then
-		return
-	end
+    if not object then
+        return
+    end
 
-	local record = State.OptimizationOriginals[object]
-	if not record then
-		record = {}
-		State.OptimizationOriginals[object] = record
-	end
+    local record = State.OriginalProperties[object]
+    if not record then
+        record = {}
+        State.OriginalProperties[object] = record
+    end
 
-	if record[property] == nil then
-		record[property] = value
-	end
+    if record[property] == nil then
+        record[property] = value
+    end
 end
 
-local function RestoreOptimizedObjects()
-	State.OptimizeToken += 1
-	State.OptimizationGeneration += 1
+local function GetOriginal(object, property)
+    local record = State.OriginalProperties[object]
+    if record and record[property] ~= nil then
+        return record[property]
+    end
 
-	for object, properties in pairs(State.OptimizationOriginals) do
-		if object and object.Parent then
-			for property, value in pairs(properties) do
-				pcall(function()
-					object[property] = value
-				end)
-			end
-		end
-	end
+    local value
+    local ok = pcall(function()
+        value = object[property]
+    end)
+    if not ok then
+        return nil
+    end
 
-	State.OptimizationOriginals = {}
-
-	if State.OptimizationOriginalQuality ~= nil then
-		pcall(function()
-			local settings = UserSettings():GetService("UserGameSettings")
-			settings.SavedQualityLevel = State.OptimizationOriginalQuality
-		end)
-	end
-
-	State.OptimizationOriginalQuality = nil
-	State.Optimizing = false
-	State.Optimized = false
-	State.OptimizationGeneration += 1
-
-	if OptimizeButton and OptimizeButton.Parent then
-		OptimizeButton.Text = "OTIMIZA 35%"
-	end
-
-	RefreshStatus()
+    SaveOriginal(object, property, value)
+    return value
 end
 
-local function OptimizeGraphics()
-	if not State.Alive then
-		return
-	end
+local function RestoreVisualProperties()
+    for object, properties in pairs(State.OriginalProperties) do
+        if object then
+            for property, value in pairs(properties) do
+                pcall(function()
+                    object[property] = value
+                end)
+            end
+        end
+    end
 
-	-- Segundo toque: desfaz a otimização anterior.
-	if State.Optimized and not State.Optimizing then
-		if OptimizeButton then
-			OptimizeButton.Text = "RESTAURANDO..."
-		end
-		SetStatus("RESTAURANDO...")
-
-		task.spawn(function()
-			RestoreOptimizedObjects()
-		end)
-		return
-	end
-
-	if State.Optimizing then
-		return
-	end
-
-	State.Optimizing = true
-	State.Optimized = false
-	State.OptimizeToken += 1
-	State.OptimizationGeneration += 1
-
-	local optimizeToken = State.OptimizeToken
-	local generation = State.OptimizationGeneration
-	local reduction = math.clamp(Config.OPTIMIZATION_STRENGTH, 0, 0.75)
-	local keepFactor = 1 - reduction
-
-	if OptimizeButton then
-		OptimizeButton.Text = "OTIMIZANDO..."
-	end
-	SetStatus("OTIMIZANDO 35%...")
-
-	-- Guarda a qualidade original apenas uma vez por ciclo.
-	pcall(function()
-		local settings = UserSettings():GetService("UserGameSettings")
-		if State.OptimizationOriginalQuality == nil then
-			State.OptimizationOriginalQuality = settings.SavedQualityLevel
-		end
-
-		local saved = settings.SavedQualityLevel
-		local currentLevel = tonumber(tostring(saved):match("(%d+)$"))
-
-		if currentLevel and currentLevel >= Config.MIN_QUALITY_LEVEL then
-			local target = math.max(
-				Config.MIN_QUALITY_LEVEL,
-				currentLevel - math.max(0, math.floor(Config.QUALITY_DROP_LEVELS))
-			)
-
-			if target < currentLevel then
-				local targetEnum = Enum.SavedQualitySetting["QualityLevel" .. tostring(target)]
-				if targetEnum then
-					settings.SavedQualityLevel = targetEnum
-				end
-			end
-		end
-	end)
-
-	-- Remove somente os dois pós-efeitos mais caros para este modo leve.
-	pcall(function()
-		for _, effect in ipairs(Lighting:GetChildren()) do
-			if not State.Alive or State.OptimizeToken ~= optimizeToken then
-				return
-			end
-
-			if effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect") then
-				SaveOriginal(effect, "Enabled", effect.Enabled)
-				pcall(function()
-					effect.Enabled = false
-				end)
-			end
-		end
-	end)
-
-	-- Caminhada incremental. O limite de tempo evita ficar preso em mapas enormes.
-	task.spawn(function()
-		local stack = {workspace}
-		local changed = 0
-		local visited = 0
-		local sliceStart = os.clock()
-		local wholeStart = sliceStart
-		local budget = math.clamp(
-			tonumber(Config.OPTIMIZE_FRAME_BUDGET) or 0.0025,
-			0.0005,
-			0.006
-		)
-		local maxSeconds = math.max(2, tonumber(Config.OPTIMIZE_MAX_SECONDS) or 8)
-		local partial = false
-
-		local function ProcessObject(object)
-			if not object then
-				return
-			end
-
-			visited += 1
-
-			pcall(function()
-				if object:IsA("ParticleEmitter") then
-					local rate = object.Rate
-					if IsFiniteNumber(rate) and rate > 0 then
-						SaveOriginal(object, "Rate", rate)
-						object.Rate = math.max(0, rate * keepFactor)
-						changed += 1
-					end
-
-				elseif object:IsA("Trail") then
-					local lifetime = object.Lifetime
-					if IsFiniteNumber(lifetime) and lifetime > 0 then
-						SaveOriginal(object, "Lifetime", lifetime)
-						object.Lifetime = math.max(0.05, lifetime * keepFactor)
-						changed += 1
-					end
-
-				elseif object:IsA("Smoke") then
-					local opacity = object.Opacity
-					local size = object.Size
-					if IsFiniteNumber(opacity) then
-						SaveOriginal(object, "Opacity", opacity)
-						object.Opacity = math.clamp(opacity * keepFactor, 0, 1)
-					end
-					if IsFiniteNumber(size) then
-						SaveOriginal(object, "Size", size)
-						object.Size = math.max(0.1, size * (1 - reduction * 0.5))
-					end
-					changed += 1
-
-				elseif object:IsA("Fire") then
-					local size = object.Size
-					local heat = object.Heat
-					if IsFiniteNumber(size) then
-						SaveOriginal(object, "Size", size)
-						object.Size = math.max(0.1, size * (1 - reduction * 0.5))
-					end
-					if IsFiniteNumber(heat) then
-						SaveOriginal(object, "Heat", heat)
-						object.Heat = heat * keepFactor
-					end
-					changed += 1
-				end
-			end)
-		end
-
-		while #stack > 0 do
-			if not State.Alive or State.OptimizeToken ~= optimizeToken or State.OptimizationGeneration ~= generation then
-				return
-			end
-
-			if os.clock() - wholeStart >= maxSeconds then
-				partial = true
-				break
-			end
-
-			local parent = stack[#stack]
-			stack[#stack] = nil
-
-			local children
-			local ok = pcall(function()
-				children = parent:GetChildren()
-			end)
-
-			if ok and children then
-				for _, object in ipairs(children) do
-					if not State.Alive or State.OptimizeToken ~= optimizeToken or State.OptimizationGeneration ~= generation then
-						return
-					end
-
-					ProcessObject(object)
-					stack[#stack + 1] = object
-
-					if os.clock() - sliceStart >= budget then
-						sliceStart = os.clock()
-						RunService.Heartbeat:Wait()
-					end
-
-					if os.clock() - wholeStart >= maxSeconds then
-						partial = true
-						break
-					end
-				end
-			end
-		end
-
-		if not State.Alive or State.OptimizeToken ~= optimizeToken or State.OptimizationGeneration ~= generation then
-			return
-		end
-
-		State.Optimizing = false
-		State.Optimized = true
-
-		if OptimizeButton then
-			OptimizeButton.Text = "OTIMIZADO 35%"
-		end
-
-		if partial then
-			SetStatus("OTIMIZADO 35% • PARCIAL")
-		else
-			SetStatus("OTIMIZADO 35% • " .. tostring(changed) .. " EFEITOS")
-		end
-
-		task.delay(1.5, function()
-			if State.Alive and State.Optimized and not State.Optimizing then
-				RefreshStatus()
-			end
-		end)
-	end)
+    table.clear(State.OriginalProperties)
+    table.clear(State.ProcessedObjects)
+    table.clear(State.PendingObjects)
 end
 
-SetConnection(Connections.Gui, "Optimize", OptimizeButton.Activated:Connect(OptimizeGraphics))
+local function ApplyObjectOptimization(object)
+    if not object or not object.Parent or not State.VisualOptimization then
+        return false
+    end
 
--- =========================================================
--- HYBRID
--- =========================================================
+    if State.ProcessedObjects[object] then
+        return false
+    end
 
-if Config.MOVEMENT_MODE == "Hybrid" then
-	SetConnection(
-		Connections.Global,
-		"PreSimulation",
-		RunService.PreSimulation:Connect(function(deltaTime)
-			if not State.Alive or not State.Enabled then
-				return
-			end
+    local reduction = math.clamp(Config.ReductionPercent / 100, 0, 0.70)
+    local keepFactor = 1 - reduction
+    local matched = false
 
-			local humanoid = State.Humanoid
-			local root = State.RootPart
+    pcall(function()
+        if Config.OptimizeParticles and object:IsA("ParticleEmitter") then
+            local originalRate = GetOriginal(object, "Rate")
+            if type(originalRate) == "number" and originalRate > 0 then
+                object.Rate = math.max(0, originalRate * keepFactor)
+                matched = true
+            end
 
-			if not humanoid
-				or not root
-				or not humanoid.Parent
-				or not root.Parent
-				or humanoid.Health <= 0
-				or root.Anchored
-			then
-				return
-			end
+        elseif Config.OptimizeTrails and object:IsA("Trail") then
+            local originalLifetime = GetOriginal(object, "Lifetime")
+            if type(originalLifetime) == "number" and originalLifetime > 0 then
+                -- Roblox Trail.Lifetime aceita valores desde 0.01; nunca aumente
+                -- um trail originalmente menor que 0.05s.
+                object.Lifetime = math.max(0.01, originalLifetime * keepFactor)
+                matched = true
+            end
 
-			if not IsFiniteNumber(deltaTime) then
-				return
-			end
+        elseif Config.OptimizeBeams and object:IsA("Beam") then
+            local originalWidth0 = GetOriginal(object, "Width0")
+            local originalWidth1 = GetOriginal(object, "Width1")
+            if type(originalWidth0) == "number" and originalWidth0 > 0 then
+                object.Width0 = originalWidth0 * keepFactor
+                matched = true
+            end
+            if type(originalWidth1) == "number" and originalWidth1 > 0 then
+                object.Width1 = originalWidth1 * keepFactor
+                matched = true
+            end
 
-			local velocity = root.AssemblyLinearVelocity
+        elseif Config.DisableSparkles and object:IsA("Sparkles") then
+            local originalEnabled = GetOriginal(object, "Enabled")
+            if originalEnabled ~= nil then
+                object.Enabled = false
+                matched = true
+            end
 
-			if not IsFiniteVector3(velocity) then
-				return
-			end
+        elseif Config.OptimizeAtmospherics and object:IsA("Smoke") then
+            local originalOpacity = GetOriginal(object, "Opacity")
+            local originalSize = GetOriginal(object, "Size")
+            if type(originalOpacity) == "number" then
+                object.Opacity = math.clamp(originalOpacity * keepFactor, 0, 1)
+                matched = true
+            end
+            if type(originalSize) == "number" and originalSize > 0 then
+                object.Size = math.max(0.1, originalSize * (1 - reduction * 0.5))
+                matched = true
+            end
 
-			local moveVelocity = nil
-			local gotMoveVelocity = pcall(function()
-				moveVelocity = humanoid:GetMoveVelocity()
-			end)
+        elseif Config.OptimizeAtmospherics and object:IsA("Fire") then
+            local originalSize = GetOriginal(object, "Size")
+            local originalHeat = GetOriginal(object, "Heat")
+            if type(originalSize) == "number" and originalSize > 0 then
+                object.Size = math.max(0.1, originalSize * (1 - reduction * 0.5))
+                matched = true
+            end
+            if type(originalHeat) == "number" then
+                object.Heat = originalHeat * keepFactor
+                matched = true
+            end
 
-			if not gotMoveVelocity or not IsFiniteVector3(moveVelocity) then
-				return
-			end
+        elseif Config.DisablePostEffects
+            and (object:IsA("BlurEffect") or object:IsA("DepthOfFieldEffect")) then
+            local originalEnabled = GetOriginal(object, "Enabled")
+            if originalEnabled ~= nil then
+                object.Enabled = false
+                matched = true
+            end
 
-			local dt = math.clamp(deltaTime, 0, Config.MAX_DELTA_TIME)
-			local alpha = 1 - math.exp(-Config.ACCELERATION * dt)
+        elseif Config.ReduceBloomSunRays and object:IsA("BloomEffect") then
+            local originalIntensity = GetOriginal(object, "Intensity")
+            if type(originalIntensity) == "number" then
+                object.Intensity = math.clamp(originalIntensity * keepFactor, 0, 1)
+                matched = true
+            end
 
-			local newX = velocity.X + (moveVelocity.X - velocity.X) * alpha
-			local newZ = velocity.Z + (moveVelocity.Z - velocity.Z) * alpha
+        elseif Config.ReduceBloomSunRays and object:IsA("SunRaysEffect") then
+            local originalIntensity = GetOriginal(object, "Intensity")
+            if type(originalIntensity) == "number" then
+                object.Intensity = math.clamp(originalIntensity * keepFactor, 0, 1)
+                matched = true
+            end
+        end
+    end)
 
-			if not IsFiniteNumber(newX) or not IsFiniteNumber(newZ) then
-				return
-			end
+    if matched then
+        State.ProcessedObjects[object] = true
+    end
+    return matched
+end
 
-			local horizontal = math.sqrt(newX * newX + newZ * newZ)
+local function StartPendingDrain()
+    if not State.Alive
+        or not State.VisualOptimization
+        or State.Optimizing
+        or State.PendingDrainRunning
+    then
+        return
+    end
 
-			if not IsFiniteNumber(horizontal) then
-				return
-			end
+    State.PendingDrainRunning = true
+    local token = State.OptimizeToken
 
-			if horizontal > Config.MAX_HORIZONTAL_VELOCITY then
-				local ratio = Config.MAX_HORIZONTAL_VELOCITY / horizontal
-				newX *= ratio
-				newZ *= ratio
-			end
+    task.spawn(function()
+        local processed = 0
+        local batchSize = math.max(30, math.floor(tonumber(Config.ScanBudgetObjects) or 120))
 
-			if math.abs(newX - velocity.X) > 0.05
-				or math.abs(newZ - velocity.Z) > 0.05
-			then
-				pcall(function()
-					root.AssemblyLinearVelocity = Vector3.new(
-						newX,
-						velocity.Y,
-						newZ
-					)
-				end)
-			end
-		end)
-	)
+        while State.Alive
+            and State.VisualOptimization
+            and token == State.OptimizeToken
+        do
+            local batch = {}
+            for object in pairs(State.PendingObjects) do
+                State.PendingObjects[object] = nil
+                batch[#batch + 1] = object
+                if #batch >= batchSize then
+                    break
+                end
+            end
+
+            if #batch == 0 then
+                break
+            end
+
+            for _, object in ipairs(batch) do
+                if not State.Alive or token ~= State.OptimizeToken or not State.VisualOptimization then
+                    break
+                end
+                State.Stats.ObjectsVisited += 1
+                if ApplyObjectOptimization(object) then
+                    State.Stats.CompatibleEffects += 1
+                end
+                processed += 1
+            end
+
+            if processed >= batchSize then
+                processed = 0
+                RunService.Heartbeat:Wait()
+            end
+        end
+
+        State.PendingDrainRunning = false
+        -- Se outro ciclo de otimização começou enquanto este worker aguardava
+        -- Heartbeat, deixe o ciclo atual decidir quando a fila pode ser drenada.
+        if State.Alive
+            and State.VisualOptimization
+            and not State.Optimizing
+            and next(State.PendingObjects) ~= nil
+        then
+            StartPendingDrain()
+        end
+    end)
+end
+
+local function SetVisualOptimization(enabled)
+    if not State.Alive then
+        return
+    end
+
+    State.VisualOptimization = enabled == true
+    State.OptimizeToken += 1
+    local token = State.OptimizeToken
+    State.Optimizing = false
+    State.CollectingPending = false
+
+    -- Restaura antes de reaplicar para que sliders e categorias não acumulem reduções.
+    RestoreVisualProperties()
+
+    if not State.VisualOptimization then
+        UpdateOperationStatus("Otimização visual: DESATIVADA\nAs propriedades guardadas foram restauradas.")
+        return
+    end
+
+    State.Stats.ObjectsVisited = 0
+    State.Stats.CompatibleEffects = 0
+    State.Stats.LastDuration = 0
+    State.Stats.LastPartial = false
+    State.Optimizing = true
+    State.CollectingPending = true
+    UpdateOperationStatus("Otimização visual: preparando...\nProcessamento incremental em lotes.")
+
+    task.spawn(function()
+        local startedAt = os.clock()
+        local processed = 0
+        local partial = false
+        local batchSize = math.max(30, math.floor(tonumber(Config.ScanBudgetObjects) or 120))
+        local maxSeconds = math.max(2, tonumber(Config.MaxScanSeconds) or 12)
+        local stack = { Workspace, Lighting }
+
+        while #stack > 0 do
+            if not State.Alive or token ~= State.OptimizeToken or not State.VisualOptimization then
+                return
+            end
+
+            if os.clock() - startedAt >= maxSeconds then
+                partial = true
+                break
+            end
+
+            local parent = stack[#stack]
+            stack[#stack] = nil
+            local children
+            local okChildren = pcall(function()
+                children = parent:GetChildren()
+            end)
+
+            if okChildren and children then
+                for _, object in ipairs(children) do
+                    if not State.Alive or token ~= State.OptimizeToken or not State.VisualOptimization then
+                        return
+                    end
+
+                    if os.clock() - startedAt >= maxSeconds then
+                        partial = true
+                        break
+                    end
+
+                    stack[#stack + 1] = object
+                    State.Stats.ObjectsVisited += 1
+                    if ApplyObjectOptimization(object) then
+                        State.Stats.CompatibleEffects += 1
+                    end
+                    processed += 1
+
+                    if processed >= batchSize then
+                        processed = 0
+                        RunService.Heartbeat:Wait()
+                    end
+                end
+            else
+                -- Não declare sucesso completo quando uma parte não pôde ser lida.
+                partial = true
+            end
+
+            if partial then
+                break
+            end
+        end
+
+        -- Esvazia a fila de objetos surgidos durante a varredura, em lotes limitados.
+        State.CollectingPending = false
+        while next(State.PendingObjects) ~= nil do
+            if not State.Alive or token ~= State.OptimizeToken or not State.VisualOptimization then
+                return
+            end
+
+            local batch = {}
+            for object in pairs(State.PendingObjects) do
+                State.PendingObjects[object] = nil
+                batch[#batch + 1] = object
+                if #batch >= batchSize then
+                    break
+                end
+            end
+
+            for _, object in ipairs(batch) do
+                if not State.Alive or token ~= State.OptimizeToken or not State.VisualOptimization then
+                    return
+                end
+                State.Stats.ObjectsVisited += 1
+                if ApplyObjectOptimization(object) then
+                    State.Stats.CompatibleEffects += 1
+                end
+                processed += 1
+                if processed >= batchSize then
+                    processed = 0
+                    RunService.Heartbeat:Wait()
+                end
+            end
+        end
+
+        if not State.Alive or token ~= State.OptimizeToken then
+            return
+        end
+
+        State.Optimizing = false
+        State.Stats.LastDuration = os.clock() - startedAt
+        State.Stats.LastPartial = partial
+
+        UpdateOperationStatus(string.format(
+            "Otimização visual: %s\nIntensidade configurada: %d%%\nEfeitos compatíveis: %d • Objetos visitados: %d\nDuração: %.2fs",
+            partial and "PARCIAL" or "ATIVA",
+            Config.ReductionPercent,
+            State.Stats.CompatibleEffects,
+            State.Stats.ObjectsVisited,
+            State.Stats.LastDuration
+        ))
+
+        if next(State.PendingObjects) ~= nil then
+            StartPendingDrain()
+        end
+    end)
+end
+
+local function OnVisualDescendantAdded(object)
+    if not State.Alive or not State.VisualOptimization or not object then
+        return
+    end
+
+    State.PendingObjects[object] = true
+    if not State.Optimizing then
+        StartPendingDrain()
+    end
 end
 
 -- =========================================================
--- DRAG
+-- MONITORAMENTO DE CARRY (SOMENTE LEITURA)
 -- =========================================================
 
-local function BeginDrag(input)
-	if not State.Alive then
-		return
-	end
+local function HasCarryMarker(object)
+    if not object then
+        return false
+    end
 
-	if input.UserInputType ~= Enum.UserInputType.Touch
-		and input.UserInputType ~= Enum.UserInputType.MouseButton1
-	then
-		return
-	end
+    for _, attributeName in ipairs(Config.CarryAttributes) do
+        local value
+        local ok = pcall(function()
+            value = object:GetAttribute(attributeName)
+        end)
 
-	State.Dragging = true
-	State.DragStart = Vector2.new(input.Position.X, input.Position.Y)
-	State.PanelStart = Vector2.new(Frame.AbsolutePosition.X, Frame.AbsolutePosition.Y)
+        if ok then
+            if value == true then
+                return true
+            end
+            if type(value) == "number" and value > 0 then
+                return true
+            end
+            if type(value) == "string" then
+                local marker = string.lower(string.gsub(value, "%s+", ""))
+                if marker ~= "" and marker ~= "false" and marker ~= "none"
+                    and marker ~= "nil" and marker ~= "0" then
+                    return true
+                end
+            end
+        end
+    end
+
+    for _, tagName in ipairs(Config.CarryTags) do
+        local tagged = false
+        pcall(function()
+            tagged = CollectionService:HasTag(object, tagName)
+        end)
+        if tagged then
+            return true
+        end
+    end
+
+    return false
 end
 
-local function UpdateDrag(input)
-	if not State.Alive or not State.Dragging then
-		return
-	end
+local function DetectCarryMarker()
+    local character = Player.Character
+    if not character or not character.Parent then
+        return false, nil
+    end
 
-	if input.UserInputType ~= Enum.UserInputType.Touch
-		and input.UserInputType ~= Enum.UserInputType.MouseMovement
-	then
-		return
-	end
+    if HasCarryMarker(Player) then
+        return true, Player
+    end
+    if HasCarryMarker(character) then
+        return true, character
+    end
 
-	local current = Vector2.new(input.Position.X, input.Position.Y)
-	local delta = current - State.DragStart
+    local ok, descendants = pcall(function()
+        return character:GetDescendants()
+    end)
+    if not ok or not descendants then
+        return false, nil
+    end
 
-	local x = State.PanelStart.X + delta.X
-	local y = State.PanelStart.Y + delta.Y
+    -- Uma única passagem pelos descendentes reduz trabalho repetido do monitor.
+    for _, object in ipairs(descendants) do
+        if HasCarryMarker(object) then
+            return true, object
+        end
 
-	x, y = ClampPanelPosition(x, y)
+        -- Alguns sistemas de carry conectam a montagem ao personagem por weld/constraint.
+        if object:IsA("WeldConstraint") or object:IsA("Weld") or object:IsA("Motor6D") then
+            local part0, part1
+            pcall(function()
+                part0 = object.Part0
+                part1 = object.Part1
+            end)
 
-	Frame.Position = UDim2.fromOffset(x, y)
-	UpdateSideButton()
+            if part0 and part1 then
+                local in0 = part0:IsDescendantOf(character)
+                local in1 = part1:IsDescendantOf(character)
+                if in0 ~= in1 then
+                    return true, in0 and part1 or part0
+                end
+            end
+        end
+    end
 
-	if Config.REMEMBER_POSITION then
-		Env[POSITION_KEY] = {x = x, y = y}
-	end
+    return false, nil
 end
 
-local function EndDrag(input)
-	if input.UserInputType == Enum.UserInputType.Touch
-		or input.UserInputType == Enum.UserInputType.MouseButton1
-	then
-		State.Dragging = false
-	end
+-- =========================================================
+-- INTERFACE RAYFIELD GEN2
+-- =========================================================
+
+if not IsCurrentBoot() then
+    return
 end
 
-SetConnection(Connections.Gui, "TitleDragStart", Header.InputBegan:Connect(BeginDrag))
-SetConnection(Connections.Gui, "TitleDragStart2", Title.InputBegan:Connect(BeginDrag))
-SetConnection(Connections.Global, "InputChanged", UserInputService.InputChanged:Connect(UpdateDrag))
-SetConnection(Connections.Global, "InputEnded", UserInputService.InputEnded:Connect(EndDrag))
+local WindowCreateOk, CreatedWindow = pcall(function()
+    return Rayfield:CreateWindow({
+        name = "SPEED ULTRA V9.5",
+        subtitle = "2026 • Mobile Edition",
+        sidebarLayout = true,
+        theme = "amethyst",
+        showName = "SPEED ULTRA",
+        showIconOnly = false,
+        configuration = {
+            autoSave = true,
+            autoLoad = true,
+            -- Nome anterior mantido para reaproveitar as preferências da V9.4.
+            fileName = "SpeedUltraV9_4_2026",
+            customFolder = "SpeedUltra"
+        }
+    })
+end)
 
--- =========================================================
--- CAMERA
--- =========================================================
-
-local function BindCamera()
-	DisconnectGroup(Connections.Camera)
-
-	local camera = workspace.CurrentCamera
-
-	if not camera then
-		return
-	end
-
-	State.Camera = camera
-
-	SetConnection(
-		Connections.Camera,
-		"Viewport",
-		camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-			if not State.Alive then
-				return
-			end
-
-			local x = Frame.AbsolutePosition.X
-			local y = Frame.AbsolutePosition.Y
-			x, y = ClampPanelPosition(x, y)
-			Frame.Position = UDim2.fromOffset(x, y)
-			UpdateSideButton()
-
-			if Config.REMEMBER_POSITION then
-				Env[POSITION_KEY] = {x = x, y = y}
-			end
-		end)
-	)
+if not WindowCreateOk or not CreatedWindow then
+    warn("[SPEED ULTRA V9.5] Falha ao criar a janela Rayfield: " .. tostring(CreatedWindow))
+    ReleaseBootReservation()
+    return
 end
 
-BindCamera()
+Window = CreatedWindow
+Boot.window = Window
+if not IsCurrentBoot() then
+    pcall(function()
+        if Window and type(Window.Destroy) == "function" then
+            Window:Destroy()
+        elseif Window and type(Window.Unload) == "function" then
+            Window:Unload()
+        end
+    end)
+    return
+end
 
-SetConnection(
-	Connections.Global,
-	"CameraChanged",
-	workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(BindCamera)
-)
+local HomeTab = Window:CreateTab({ name = "Início", icon = "house" })
+local PerformanceTab = Window:CreateTab({ name = "Desempenho", icon = "gauge" })
+local CarryTab = Window:CreateTab({ name = "Carry", icon = "package" })
+local FarmTab = Window:CreateTab({ name = "Objetivos", icon = "egg" })
+local EventTab = Window:CreateTab({ name = "Evento", icon = "calendar-days" })
+local SettingsTab = Window:CreateTab({ name = "Interface", icon = "palette" })
+
+HomeTab:CreateText({
+    name = "SPEED ULTRA V9.5 • 2026",
+    text = "Interface modernizada para celular. O painel monitora o personagem e oferece ajustes visuais locais reversíveis."
+})
+
+StatusText = HomeTab:CreateText({
+    name = "Diagnóstico local",
+    text = "Iniciando monitoramento..."
+})
+
+HomeTab:CreateText({
+    name = "Sobre esta versão",
+    text = "A otimização visual altera apenas propriedades gráficas locais selecionadas. O resultado depende dos efeitos existentes no mapa; a porcentagem é a intensidade configurada, não uma promessa de aumento de FPS."
+})
+
+-- Planejador manual de objetivos. Esta aba não controla movimento, interação,
+-- teleporte ou coleta; serve apenas para registrar uma meta e mostrar uma dica.
+local ManualGoal = "Ovo de maior valor (manual)"
+local ObjectiveDescriptions = {
+    ["Ovo de maior valor (manual)"] = "Compare os valores mostrados pelo próprio jogo e escolha o alvo manualmente. Não lê inventários ocultos nem calcula valores não expostos pela interface.",
+    ["Ovo do evento (manual)"] = "Confira o bioma, a loja e os requisitos do evento dentro do jogo. Esta seleção só registra sua meta atual.",
+    ["Ovo Enchanted Forest (manual)"] = "Meta manual para a Floresta Encantada. Guia comunitário relata uma missão de 20 ovos do bioma para o Wisp; confirme no painel do jogo.",
+    ["Halloween Dimension Egg (manual)"] = "Meta manual para ovos da Halloween Dimension. Confirme preço, disponibilidade e recompensa diretamente na loja do evento.",
+    ["Manor Key (manual)"] = "Rota comunitária relatada: Phantom Express até Forgotten Town, redemoinho verde e pesca subterrânea com Haunted Rod; depois use a chave na Manor Door. A chance de drop não está confirmada.",
+}
+
+FarmTab:CreateText({
+    name = "Acompanhamento manual",
+    text = "Organiza o objetivo escolhido e suas etapas. Não executa auto-farm, teleporte, coleta automática nem chamadas remotas de gameplay."
+})
+
+ObjectiveText = FarmTab:CreateText({
+    name = "Objetivo e orientação",
+    text = ObjectiveDescriptions[ManualGoal]
+})
+
+ObjectiveDropdown = FarmTab:CreateDropdown({
+    name = "Escolher objetivo",
+    description = "Escolha um objetivo para acompanhar manualmente.",
+    options = {
+        "Ovo de maior valor (manual)",
+        "Ovo do evento (manual)",
+        "Ovo Enchanted Forest (manual)",
+        "Halloween Dimension Egg (manual)",
+        "Manor Key (manual)",
+    },
+    value = ManualGoal,
+    flag = "ManualObjectiveV94",
+    callback = function(value)
+        if type(value) ~= "string" then return end
+        ManualGoal = value
+        if ObjectiveText then
+            pcall(function()
+                ObjectiveText:Set(ObjectiveDescriptions[value] or "Objetivo selecionado. Consulte as instruções dentro do jogo.")
+            end)
+        end
+    end
+})
+
+FarmTab:CreateToggle({
+    name = "Etapa manual: objetivo conferido",
+    description = "Marque depois de verificar o alvo na experiência.",
+    value = false,
+    flag = "ManualObjectiveConfirmedV94",
+    callback = function(value) end
+})
+
+FarmTab:CreateToggle({
+    name = "Etapa manual: ovo recolhido normalmente",
+    description = "Apenas checklist; não aciona prompts nem eventos remotos.",
+    value = false,
+    flag = "ManualEggCollectedV94",
+    callback = function(value) end
+})
+
+FarmTab:CreateToggle({
+    name = "Etapa manual: retorno à base concluído",
+    description = "Marque depois de concluir pessoalmente o transporte no jogo.",
+    value = false,
+    flag = "ManualEggReturnedV94",
+    callback = function(value) end
+})
+
+OperationText = PerformanceTab:CreateText({
+    name = "Resultado da otimização",
+    text = "Pronto. Ative a otimização para iniciar uma varredura reversível."
+})
+
+VisualToggle = PerformanceTab:CreateToggle({
+    name = "Otimização visual local",
+    description = "Reduz os tipos de efeitos escolhidos; pode ser desfeita.",
+    value = false,
+    flag = "VisualOptimization",
+    callback = function(value)
+        if not State.UIReady or State.ControlsUpdating then
+            State.VisualOptimization = value == true
+            return
+        end
+        SetVisualOptimization(value)
+    end
+})
+
+ReductionSlider = PerformanceTab:CreateSlider({
+    name = "Intensidade da redução",
+    description = "Percentual aplicado aos parâmetros selecionados; não representa ganho garantido de desempenho.",
+    range = { 10, 70 },
+    increment = 5,
+    suffix = "%",
+    value = Config.ReductionPercent,
+    flag = "ReductionPercent",
+    callback = function(value, dragging)
+        if type(value) == "number" then
+            Config.ReductionPercent = math.clamp(math.floor(value + 0.5), 10, 70)
+            -- Rayfield Gen2 informa dragging=true enquanto o utilizador move
+            -- o slider. Só reinicia a varredura quando ele solta o controle.
+            if State.UIReady and not State.ControlsUpdating and State.VisualOptimization and not dragging then
+                SetVisualOptimization(true)
+            end
+        end
+    end
+})
+
+ParticlesToggle = PerformanceTab:CreateToggle({
+    name = "Reduzir partículas",
+    description = "Ajusta a taxa de emissão dos ParticleEmitter selecionados.",
+    value = Config.OptimizeParticles,
+    flag = "OptimizeParticles",
+    callback = function(value)
+        Config.OptimizeParticles = value == true
+        if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
+            SetVisualOptimization(true)
+        end
+    end
+})
+
+TrailsToggle = PerformanceTab:CreateToggle({
+    name = "Reduzir trails",
+    description = "Diminui o tempo dos segmentos dos Trails selecionados.",
+    value = Config.OptimizeTrails,
+    flag = "OptimizeTrails",
+    callback = function(value)
+        Config.OptimizeTrails = value == true
+        if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
+            SetVisualOptimization(true)
+        end
+    end
+})
+
+AtmosphericsToggle = PerformanceTab:CreateToggle({
+    name = "Reduzir fumaça e fogo",
+    description = "Diminui parâmetros visuais de Smoke e Fire.",
+    value = Config.OptimizeAtmospherics,
+    flag = "OptimizeAtmospherics",
+    callback = function(value)
+        Config.OptimizeAtmospherics = value == true
+        if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
+            SetVisualOptimization(true)
+        end
+    end
+})
+
+PostEffectsToggle = PerformanceTab:CreateToggle({
+    name = "Desativar Blur / Depth of Field",
+    description = "Quando a otimização estiver ativa, desliga esses dois pós-efeitos e guarda o estado original.",
+    value = true,
+    flag = "DisablePostEffects",
+    callback = function(value)
+        Config.DisablePostEffects = value == true
+        if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
+            SetVisualOptimization(true)
+        end
+    end
+})
+
+BeamsToggle = PerformanceTab:CreateToggle({
+    name = "Reduzir espessura de Beam",
+    description = "Reduz Width0/Width1 e restaura os valores originais quando desativado.",
+    value = true,
+    flag = "OptimizeBeams",
+    callback = function(value)
+        Config.OptimizeBeams = value == true
+        if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
+            SetVisualOptimization(true)
+        end
+    end
+})
+
+SparklesToggle = PerformanceTab:CreateToggle({
+    name = "Desativar Sparkles",
+    description = "Desativa temporariamente Sparkles e guarda o Enabled original.",
+    value = false,
+    flag = "DisableSparkles",
+    callback = function(value)
+        Config.DisableSparkles = value == true
+        if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
+            SetVisualOptimization(true)
+        end
+    end
+})
+
+BloomSunRaysToggle = PerformanceTab:CreateToggle({
+    name = "Reduzir Bloom / SunRays",
+    description = "Reduz a intensidade destes pós-efeitos sem desligá-los completamente.",
+    value = true,
+    flag = "ReduceBloomSunRays",
+    callback = function(value)
+        Config.ReduceBloomSunRays = value == true
+        if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
+            SetVisualOptimization(true)
+        end
+    end
+})
+
+FpsText = PerformanceTab:CreateText({
+    name = "Monitor local",
+    text = "FPS aproximado: calculando..."
+})
+
+PerformanceTab:CreateButton({
+    name = "Restaurar efeitos visuais",
+    description = "Desliga a otimização e tenta restaurar todas as propriedades guardadas.",
+    callback = function()
+        if VisualToggle then
+            VisualToggle:Set(false)
+        else
+            SetVisualOptimization(false)
+        end
+    end
+})
+
+PerformanceTab:CreateButton({
+    name = "Reexaminar efeitos",
+    description = "Reaplica as opções atuais em uma nova varredura incremental.",
+    callback = function()
+        if State.VisualOptimization then
+            SetVisualOptimization(true)
+        else
+            UpdateOperationStatus("Ative primeiro a otimização visual para reexaminar os efeitos.")
+        end
+    end
+})
+
+EventTab:CreateText({
+    name = "Update 10 — Halloween Part 2 (24/10/2026)",
+    text = "Fonte comunitária consultada em 25/10/2026; não é documentação oficial do desenvolvedor. O Update 10 relata Abandoned Manor, Manor Key, a luta Pumpkin Brute → Pumpkin King e a fusão Cursed Monarch Divine. Uma fonte comunitária lista a janela da Part 2 até 25/10/2026 16:34 UTC (13:34 em Brasília), mas confirme a disponibilidade no próprio jogo; nomes e mecânicas podem estar incompletos."
+})
+
+EventTab:CreateText({
+    name = "Manor Key — rota relatada",
+    text = "1) Tenha acesso ao Phantom Express. 2) Vá a Forgotten Town. 3) Entre no redemoinho verde. 4) Pesque na área subterrânea com Haunted Rod até obter Manor Key. 5) Volte à Abandoned Manor e interaja com a Manor Door acorrentada. A chave não garante abrir o portal do chefe: são entradas distintas. A chance de drop não foi confirmada."
+})
+
+EventTab:CreateToggle({
+    name = "Etapa: acesso ao Phantom Express verificado",
+    description = "Checklist manual persistente.", value = false,
+    flag = "V94_Halloween_PhantomExpress", callback = function(value) end
+})
+EventTab:CreateToggle({
+    name = "Etapa: Manor Key obtida",
+    description = "Marque depois de confirmar o item no inventário.", value = false,
+    flag = "V94_Halloween_ManorKey", callback = function(value) end
+})
+EventTab:CreateToggle({
+    name = "Etapa: Manor Door aberta",
+    description = "Não confunda a porta da mansão com o portal do chefe.", value = false,
+    flag = "V94_Halloween_ManorDoor", callback = function(value) end
+})
+
+EventTab:CreateText({
+    name = "Chefe e Boss Mastery",
+    text = "O guia comunitário descreve uma luta em duas fases: Pumpkin Brute seguida de Pumpkin King. Ele relata 1 Boss Kill = 1 Mastery e 65 tiers; confira o contador e resgate recompensas dentro do jogo. Nenhuma chance do drop Divine foi confirmada."
+})
+EventTab:CreateToggle({
+    name = "Etapa: vitória e recompensa conferidas",
+    description = "Marque só depois de verificar o contador/recompensa no jogo.", value = false,
+    flag = "V94_Halloween_BossMastery", callback = function(value) end
+})
+
+EventTab:CreateText({
+    name = "Cursed Monarch Divine — receita relatada",
+    text = "Guia independente mostra 2 Ghost Fish — Eternal e 2 Voidseer Pumpkin — Divine no altar da mansão. O consumo dos itens, a distribuição entre jogadores e a possibilidade de fazer solo não estão confirmados; confira o altar antes de usar itens raros."
+})
+EventTab:CreateToggle({
+    name = "Etapa: receita conferida diretamente no altar",
+    description = "A checklist não executa fusões nem consome itens.", value = false,
+    flag = "V94_Halloween_FusionRecipe", callback = function(value) end
+})
+
+EventTab:CreateText({
+    name = "Perfil visual do evento",
+    text = "O preset abaixo ajusta efeitos visuais locais. Não movimenta o personagem nem executa coleta/teleporte automáticos."
+})
+
+EventTab:CreateButton({
+    name = "Ativar perfil Halloween Part 2",
+    description = "Aplica um preset visual local de 50%; pode ser desfeito.",
+    callback = function()
+        State.ControlsUpdating = true
+        Config.ReductionPercent = 50
+        Config.DisablePostEffects = true
+        Config.OptimizeBeams = true
+        Config.DisableSparkles = true
+        Config.ReduceBloomSunRays = true
+        if ReductionSlider then pcall(function() ReductionSlider:Set(50) end) end
+        if ParticlesToggle then pcall(function() ParticlesToggle:Set(true) end) end
+        if TrailsToggle then pcall(function() TrailsToggle:Set(true) end) end
+        if AtmosphericsToggle then pcall(function() AtmosphericsToggle:Set(true) end) end
+        if PostEffectsToggle then pcall(function() PostEffectsToggle:Set(true) end) end
+        if BeamsToggle then pcall(function() BeamsToggle:Set(true) end) end
+        if SparklesToggle then pcall(function() SparklesToggle:Set(true) end) end
+        if BloomSunRaysToggle then pcall(function() BloomSunRaysToggle:Set(true) end) end
+        if VisualToggle then pcall(function() VisualToggle:Set(true) end) end
+        State.ControlsUpdating = false
+        SetVisualOptimization(true)
+    end
+})
+
+EventTab:CreateButton({
+    name = "Restaurar visual original",
+    description = "Desativa o perfil e restaura as propriedades visuais guardadas.",
+    callback = function()
+        State.ControlsUpdating = true
+        if VisualToggle then pcall(function() VisualToggle:Set(false) end) end
+        State.ControlsUpdating = false
+        SetVisualOptimization(false)
+    end
+})
+
+CarryTab:CreateText({
+    name = "Monitor do carry",
+    text = "O monitor é somente de leitura. Ele tenta identificar atributos, tags e constraints comuns, mas cada jogo pode usar um sistema diferente."
+})
+
+local CarryStatusText = CarryTab:CreateText({
+    name = "Estado detectado",
+    text = "Aguardando primeira leitura..."
+})
+
+CarryTab:CreateToggle({
+    name = "Monitorar carry",
+    description = "Consulta possíveis marcadores do personagem sem modificar objetos ou física.",
+    value = true,
+    flag = "MonitorCarry",
+    callback = function(value)
+        State.MonitorCarry = value == true
+        if not State.MonitorCarry then
+            State.LastCarryDetected = false
+            State.LastCarryObject = nil
+            if CarryStatusText then
+                CarryStatusText:Set("Monitoramento desativado.")
+            end
+        end
+    end
+})
+
+SettingsTab:CreateText({
+    name = "Tema e preferências",
+    text = "O Rayfield guarda as opções com suporte à configuração do ambiente. Em certos executores, o salvamento persistente pode depender das permissões de arquivo disponíveis."
+})
+
+SettingsTab:CreateText({
+    name = "Instância única / recarga limpa",
+    text = "Ao executar o script novamente, a execução anterior é invalidada, os monitores são desconectados, as propriedades visuais salvas são restauradas e a janela antiga é fechada antes de a nova sessão continuar. Se a primeira execução ainda estiver carregando a UI, ela verifica o token e aborta quando retoma."
+})
+
+SettingsTab:CreateText({
+    name = "Aviso de segurança da conta",
+    text = "Este script NÃO tem Anti-Ban e não tenta ocultar execução nem contornar o anti-cheat. Nenhuma opção local pode garantir imunidade a suspensão. A instância única evita abas duplicadas e conflitos locais; não reduz nem remove o risco relacionado ao uso de clientes modificados ou executores."
+})
+
+DeviceText = SettingsTab:CreateText({
+    name = "Dispositivo",
+    text = "Aguardando informações locais..."
+})
+
+SettingsTab:CreateButton({
+    name = "Tema roxo (Amethyst)",
+    callback = function()
+        pcall(function()
+            Window:ChangeTheme("amethyst")
+        end)
+    end
+})
+
+SettingsTab:CreateButton({
+    name = "Tema carmesim (Rose)",
+    callback = function()
+        pcall(function()
+            Window:ChangeTheme("rose")
+        end)
+    end
+})
+
+SettingsTab:CreateButton({
+    name = "Encerrar e restaurar",
+    description = "Fecha a interface, encerra os monitores e restaura as propriedades visuais salvas.",
+    callback = function()
+        local cleanup = Env[REGISTRY_KEY]
+        if type(cleanup) == "function" then
+            cleanup("USER_UNLOAD")
+        end
+    end
+})
+
+-- Se outra execução começou enquanto a UI estava sendo construída, não conecte monitores.
+if not IsCurrentBoot() then
+    pcall(function()
+        if Window and type(Window.Destroy) == "function" then
+            Window:Destroy()
+        elseif Window and type(Window.Unload) == "function" then
+            Window:Unload()
+        end
+    end)
+    return
+end
+
+-- Registra os eventos de efeitos somente depois de a UI ter sido construída.
+AddConnection(Workspace.DescendantAdded:Connect(OnVisualDescendantAdded))
+AddConnection(Lighting.DescendantAdded:Connect(OnVisualDescendantAdded))
+
+-- Os listeners estão conectados; o início de uma otimização restaurada pela configuração
+-- acontece depois que todos os controles foram criados e State.UIReady foi ativado.
 
 -- =========================================================
--- CHARACTER EVENTS
+-- MONITOR PRINCIPAL
 -- =========================================================
 
-SetConnection(
-	Connections.Global,
-	"CharacterAdded",
-	Player.CharacterAdded:Connect(function(character)
-		if not State.Alive then
-			return
-		end
+local function RefreshCharacterReferences()
+    local character = Player.Character
+    State.CurrentCharacter = character
+    State.CurrentHumanoid = nil
+    State.CurrentRoot = nil
 
-		task.defer(function()
-			if State.Alive and character == Player.Character then
-				PrepareCharacter(character, false)
-			end
-		end)
-	end)
-)
+    if not character then
+        return
+    end
 
-SetConnection(
-	Connections.Global,
-	"CharacterRemoving",
-	Player.CharacterRemoving:Connect(function(character)
-		if character ~= State.Character then
-			return
-		end
+    pcall(function()
+        State.CurrentHumanoid = character:FindFirstChildOfClass("Humanoid")
+        State.CurrentRoot = character:FindFirstChild("HumanoidRootPart")
+    end)
+end
 
-		local humanoid = State.Humanoid
-		local original = State.OriginalWalkSpeed
+local function BuildDiagnosticText()
+    RefreshCharacterReferences()
 
-		if humanoid
-			and humanoid.Parent
-			and IsFiniteNumber(original)
-		then
-			pcall(function()
-				humanoid.WalkSpeed = original
-			end)
-		end
+    local character = State.CurrentCharacter
+    local humanoid = State.CurrentHumanoid
+    local root = State.CurrentRoot
 
-		State.CharacterGeneration += 1
-		State.PreparationToken += 1
+    if not character then
+        return "Personagem: aguardando spawn\nFPS aproximado: " .. tostring(State.Stats.FPS) .. "\nOtimização visual: " .. (State.VisualOptimization and "ATIVA" or "DESATIVADA")
+    end
 
-		DisconnectGroup(Connections.Character)
-		ClearCarryPhysics()
+    local healthText = "indisponível"
+    local speedText = "indisponível"
 
-		State.Character = nil
-		State.Humanoid = nil
-		State.RootPart = nil
-		State.Carrying = false
-		State.CarriedObject = nil
-		State.CarryStartedAt = 0
-		State.LastCarrySpeedApply = 0
-		State.CarrySpeedAppliedForCycle = false
-		State.OriginalWalkSpeed = nil
-		State.Preparing = false
-		State.CarryScanPending = false
-		State.LastCarryScan = 0
+    if humanoid and humanoid.Parent then
+        pcall(function()
+            healthText = string.format("%.0f / %.0f", humanoid.Health, humanoid.MaxHealth)
+            speedText = string.format("%.1f", humanoid.WalkSpeed)
+        end)
+    end
 
-		SetStatus("PERSONAGEM REMOVIDO")
-	end)
-)
+    local rootText = (root and root.Parent) and "OK" or "aguardando"
+    local optimizationText = State.Optimizing and "PROCESSANDO" or (State.VisualOptimization and "ATIVA" or "DESATIVADA")
 
--- =========================================================
--- WATCHDOG
--- =========================================================
+    return string.format(
+        "Personagem: OK\nHumanoid: %s\nSaúde: %s\nWalkSpeed (leitura): %s\nRootPart: %s\nFPS aproximado: %d\nOtimização visual: %s",
+        (humanoid and humanoid.Parent) and "OK" or "aguardando",
+        healthText,
+        speedText,
+        rootText,
+        State.Stats.FPS,
+        optimizationText
+    )
+end
+
+AddConnection(Player.CharacterAdded:Connect(function()
+    task.wait(0.25)
+    RefreshCharacterReferences()
+end))
+
+AddConnection(Player.CharacterRemoving:Connect(function()
+    State.CurrentCharacter = nil
+    State.CurrentHumanoid = nil
+    State.CurrentRoot = nil
+end))
+
+-- Medição aproximada de quadros por segundo. Não representa FPS garantido nem ping.
+local fpsFrames = 0
+local fpsWindowStart = os.clock()
+AddConnection(RunService.RenderStepped:Connect(function()
+    if not State.Alive then
+        return
+    end
+
+    fpsFrames += 1
+    local now = os.clock()
+    local elapsed = now - fpsWindowStart
+    if elapsed >= 1 then
+        State.Stats.FPS = math.clamp(math.floor((fpsFrames / elapsed) + 0.5), 0, 1000)
+        State.Stats.FPSUpdatedAt = now
+        fpsFrames = 0
+        fpsWindowStart = now
+
+        if FpsText then
+            pcall(function()
+                FpsText:Set(string.format("FPS aproximado (RenderStepped): %d\nNão é uma medição de ping nem uma garantia de desempenho.", State.Stats.FPS))
+            end)
+        end
+    end
+end))
+
+local function RefreshDeviceText()
+    if not DeviceText then
+        return
+    end
+
+    local touch = "indisponível"
+    local cameraText = "indisponível"
+    pcall(function()
+        touch = UserInputService.TouchEnabled and "Toque detectado" or "Sem toque detectado"
+    end)
+    pcall(function()
+        local camera = Workspace.CurrentCamera
+        if camera then
+            local viewport = camera.ViewportSize
+            cameraText = string.format("%d × %d", math.floor(viewport.X), math.floor(viewport.Y))
+        end
+    end)
+
+    pcall(function()
+        DeviceText:Set("Entrada: " .. touch .. "\nResolução da viewport: " .. cameraText)
+    end)
+end
+
+RefreshDeviceText()
+AddConnection(Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    task.defer(RefreshDeviceText)
+end))
 
 task.spawn(function()
-	while State.Alive do
-		task.wait(Config.WATCHDOG_INTERVAL)
+    while State.Alive do
+        task.wait(Config.CarryMonitorInterval)
+        if not State.Alive then
+            break
+        end
 
-		if not State.Alive then
-			break
-		end
+        UpdateStatus(BuildDiagnosticText())
 
-		local character = Player.Character
+        if State.MonitorCarry and CarryStatusText then
+            local carrying, object = false, nil
+            local ok = pcall(function()
+                carrying, object = DetectCarryMarker()
+            end)
 
-		if not character then
-			RefreshStatus()
-		elseif character ~= State.Character then
-			if not State.Preparing then
-				PrepareCharacter(character, false)
-			end
-		elseif not State.Humanoid or not State.Humanoid.Parent then
-			if not State.Preparing then
-				PrepareCharacter(character, true)
-			end
-		elseif not State.RootPart or not State.RootPart.Parent then
-			if not State.Preparing then
-				PrepareCharacter(character, true)
-			end
-		else
-			UpdateCarryState(false)
-			ApplySpeed(false)
-		end
-	end
+            if ok and carrying then
+                State.LastCarryDetected = true
+                State.LastCarryObject = object
+                local objectName = "objeto não identificado"
+                pcall(function()
+                    objectName = object.Name
+                end)
+                CarryStatusText:Set("Possível carry detectado: " .. tostring(objectName) .. "\nA detecção é experimental e depende dos marcadores usados pelo jogo.")
+            elseif ok then
+                State.LastCarryDetected = false
+                State.LastCarryObject = nil
+                CarryStatusText:Set("Nenhum marcador de carry detectado.\nIsso não garante que o jogo não esteja transportando um objeto.")
+            else
+                CarryStatusText:Set("Não foi possível ler os marcadores de carry nesta atualização.")
+            end
+        end
+    end
 end)
 
 -- =========================================================
--- LIMPEZA / AUTODESTRUICAO
+-- LIMPEZA / AUTODESTRUIÇÃO
 -- =========================================================
 
 local function Cleanup(reason)
-	if State.CleaningUp then
-		return
-	end
+    if State.Cleaning then
+        return
+    end
 
-	State.CleaningUp = true
-	State.Alive = false
-	State.OptimizeToken += 1
-	State.Dragging = false
+    State.Cleaning = true
+    State.Alive = false
+    State.VisualOptimization = false
+    State.OptimizeToken += 1
+    State.Optimizing = false
+    State.CollectingPending = false
 
-	local humanoid = State.Humanoid
-	local original = State.OriginalWalkSpeed
+    pcall(RestoreVisualProperties)
+    DisconnectAll()
 
-	if humanoid
-		and humanoid.Parent
-		and IsFiniteNumber(original)
-	then
-		pcall(function()
-			humanoid.WalkSpeed = original
-		end)
-	end
+    if Env[REGISTRY_KEY] == Cleanup then
+        Env[REGISTRY_KEY] = nil
+    end
+    if Boot.cleanup == Cleanup then
+        Boot.cleanup = nil
+    end
+    if Env[BOOT_KEY] == Boot then
+        Boot.cancelled = true
+        Env[BOOT_KEY] = nil
+    end
 
-	ClearCarryPhysics()
-	DisconnectAll()
+    pcall(function()
+        if Window and type(Window.Destroy) == "function" then
+            Window:Destroy()
+        elseif Window and type(Window.Unload) == "function" then
+            Window:Unload()
+        elseif type(Rayfield.Destroy) == "function" then
+            Rayfield:Destroy()
+        end
+    end)
 
-
-	if ScreenGui then
-		pcall(function()
-			ScreenGui:Destroy()
-		end)
-	end
-
-	if Env[REGISTRY_KEY] == Cleanup then
-		Env[REGISTRY_KEY] = nil
-	end
-
-	Debug("Cleanup:", reason or "UNKNOWN")
+    if reason and reason ~= "USER_UNLOAD" and reason ~= "RELOAD" then
+        warn("[SPEED ULTRA V9.5] Encerrado: " .. tostring(reason))
+    end
 end
 
+Boot.cleanup = Cleanup
 Env[REGISTRY_KEY] = Cleanup
 
-SetConnection(
-	Connections.Gui,
-	"GuiDestroying",
-	ScreenGui.Destroying:Connect(function()
-		if not State.CleaningUp then
-			Cleanup("GUI_DESTROYED")
-		end
-	end)
-)
+RefreshCharacterReferences()
+UpdateStatus(BuildDiagnosticText())
 
--- =========================================================
--- INICIALIZACAO
--- =========================================================
-
-ApplySavedOrDefaultPosition()
-
-if Player.Character then
-	PrepareCharacter(Player.Character, false)
-else
-	SetStatus("AGUARDANDO")
+State.UIReady = true
+if State.VisualOptimization then
+    SetVisualOptimization(true)
 end
 
-RefreshStatus()
-
-Debug("Speed Ultra V8.3 iniciado.")
-
--- =========================================================
--- FIM
--- =========================================================
+print("[SPEED ULTRA V9.5] Inicializado com Rayfield Gen2; instância única ativa.")
