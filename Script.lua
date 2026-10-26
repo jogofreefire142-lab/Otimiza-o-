@@ -1,6 +1,10 @@
 --[[
-    SPEED ULTRA V10.1 — 2026
-    UI reorganizada, controle de velocidade autorizado para projeto próprio e otimização visual reversível.
+    SPEED ULTRA V10.2 — 2026
+    Código único para o Roube um Ovo: ovos/ESP informativo, acompanhamento de eventos,
+    leitura local de Speed e otimização visual reversível; mantém a interface existente.
+    Revisão de catálogo/evento em 26/10/2026 a partir da página Roblox e guias comunitários.
+    Repositórios que prometem auto-farm foram tratados como referência não verificada quando
+    não publicam o arquivo executável; não foram copiados teleportes nem remotes de roubo.
 
     Incluído nesta versão:
       • UI responsiva com abas e temas;
@@ -207,13 +211,13 @@ end
 if loadOk then
     Rayfield = loadResult
 else
-    warn("[SPEED ULTRA V10.1] Não foi possível carregar Rayfield Gen2: " .. tostring(loadResult))
+    warn("[SPEED ULTRA V10.2] Não foi possível carregar Rayfield Gen2: " .. tostring(loadResult))
     ReleaseBootReservation()
     return
 end
 
 if type(Rayfield) ~= "table" or type(Rayfield.CreateWindow) ~= "function" then
-    warn("[SPEED ULTRA V10.1] Rayfield Gen2 não retornou uma API válida; a interface não foi iniciada.")
+    warn("[SPEED ULTRA V10.2] Rayfield Gen2 não retornou uma API válida; a interface não foi iniciada.")
     ReleaseBootReservation()
     return
 end
@@ -989,7 +993,7 @@ local WindowCreateOk, CreatedWindow = pcall(function()
 end)
 
 if not WindowCreateOk or not CreatedWindow then
-    warn("[SPEED ULTRA V10.1] Falha ao criar a janela Rayfield: " .. tostring(CreatedWindow))
+    warn("[SPEED ULTRA V10.2] Falha ao criar a janela Rayfield: " .. tostring(CreatedWindow))
     ReleaseBootReservation()
     return
 end
@@ -1020,25 +1024,34 @@ end
 -- do raio selecionado e com linha de visão aproximada. Não interage com o jogo.
 -- =========================================================
 local EggCatalog = {
-    { key = "t-rex", name = "T-Rex Egg", hint = "Prehistoric • guia comunitário: 17M de velocidade" },
-    { key = "trex", name = "T-Rex Egg", hint = "Prehistoric • guia comunitário: 17M de velocidade" },
-    { key = "eternal phoenix", name = "Eternal Phoenix Egg", hint = "Aparição rara/janela Eternal segundo guia comunitário" },
-    { key = "yeti egg", name = "Yeti Egg", hint = "Snow • guia comunitário: 170K de velocidade" },
-    { key = "cherry blossom", name = "Cherry Blossom Egg", hint = "Conteúdo da atualização Cherry Blossom" },
-    { key = "chicken egg", name = "Chicken Egg", hint = "Forest • início; registro comunitário" },
-    { key = "swan egg", name = "Swan Egg", hint = "Lake • guia comunitário: 900 de velocidade" },
-    { key = "scorpion egg", name = "Scorpion Egg", hint = "Desert • guia comunitário: 10K de velocidade" },
-    { key = "tiger egg", name = "Tiger Egg", hint = "Jungle • guia comunitário: 40K de velocidade" },
-    { key = "hellhound egg", name = "Hellhound Egg", hint = "Volcano • guia comunitário: 700K de velocidade" },
-    { key = "moby egg", name = "Moby Egg", hint = "Abyss Ocean • guia comunitário: 2.5M de velocidade" },
-    { key = "dragon egg", name = "Dragon Egg", hint = "Cosmic • guia comunitário: 700M de velocidade" },
-    { key = "brainrot egg", name = "Brainrot Egg", hint = "Aparição rara relatada pela comunidade; confirme no jogo" },
-    { key = "halloween egg", name = "Halloween Egg", hint = "Update 9 • evento de Halloween; disponibilidade a confirmar" },
-    { key = "candy corn", name = "Candy Corn event egg", hint = "Evento Halloween • confirme moeda e troca no ponto do evento" },
-    { key = "extinction egg", name = "Extinction Egg", hint = "Update 6 • loja/recompensa específica do jogo" },
-    { key = "experiment #001", name = "Experiment #001 Egg", hint = "Update 5 • Experiment Shop / Samples" },
-    { key = "experiment #013", name = "Experiment #013 Egg", hint = "Update 5 • Experiment Shop / Samples" },
-    { key = "luminous egg", name = "Luminous Egg", hint = "Update 4 • conteúdo de Angels vs Demons" },
+    -- Nomes/biomas de referência. O catálogo separa os fatos comunitários do que
+    -- precisa ser confirmado no jogo; não inventa preço, chance ou raridade.
+    { key = "chicken", name = "Chicken / Forest", hint = "Pet Index comunitário: Chicken aparece como Common; $1/s foi observado na ficha, não é raridade do ovo." },
+    { key = "bird", name = "Bird / Forest", hint = "Nome no índice comunitário parcial; raridade e renda não confirmadas na fonte consultada." },
+    { key = "owl", name = "Owl / Forest", hint = "Nome no índice comunitário parcial; raridade e renda não confirmadas na fonte consultada." },
+    { key = "raccoon", name = "Raccoon / Forest", hint = "Nome no índice comunitário parcial; raridade e renda não confirmadas na fonte consultada." },
+    { key = "frog", name = "Frog / Lake", hint = "Primeiro nome visível no índice comunitário parcial de Lake; confirme o rótulo do modelo no jogo." },
+    { key = "tiger", name = "Tiger / Jungle", hint = "Perseguição na região Jungle é relatada em gameplay comunitário; não inferir preço nem raridade." },
+    { key = "yeti", name = "Yeti / área de gelo", hint = "Nome associado à área de gelo/Yeti em guias de gameplay; confirme a identificação dentro da experiência." },
+    { key = "scorpion", name = "Scorpion / Volcano (relato)", hint = "Um relato comunitário associa um alvo em escala de escorpião a Volcano; não é confirmação de um ovo com esse nome." },
+    { key = "whale", name = "Whale / Abyss Ocean (relato)", hint = "Guia comunitário relata ovos em escala de baleia na área Abyss Ocean; o nome exato do ovo não foi confirmado." },
+    { key = "t-rex", name = "T-Rex / Prehistoric", hint = "Alvo dinossauro/T-Rex relatado em gameplay da região Prehistoric; confira o nome exato exibido pelo jogo." },
+    { key = "cosmic king", name = "Cosmic King / região final", hint = "Nome da região final relatado pela comunidade; os requisitos variam e não devem ser tratados como fixos." },
+    { key = "cherry blossom egg", name = "Cherry Blossom Egg", hint = "Conteúdo do Update 1 segundo ao histórico comunitário de atualizações; disponibilidade atual a confirmar." },
+    { key = "monster egg", name = "Monster Egg", hint = "Associado ao Update 2/Titan Temple em histórico comunitário; confira loja e rótulo atuais." },
+    { key = "rift egg", name = "Rift Egg", hint = "Associado ao Update 3/Rifts em histórico comunitário; preço e disponibilidade não são fixados aqui." },
+    { key = "luminous egg", name = "Luminous Egg", hint = "Associado ao Update 4/Angels vs Demons em guias comunitários; confirme no jogo." },
+    { key = "experiment #001", name = "Experiment #001", hint = "Update 5/Samples e Experiment Shop em guia comunitário; confirmação e custo dependem da loja atual." },
+    { key = "experiment #013", name = "Experiment #013", hint = "Update 5/Samples e Experiment Shop em guia comunitário; confirmação e custo dependem da loja atual." },
+    { key = "extinction egg", name = "Extinction Egg", hint = "Associado ao Update 6/Dr. Scramble's Revenge em histórico comunitário; confirme o requisito na experiência." },
+    { key = "enchanted forest", name = "Enchanted Forest", hint = "Update 7; guias comunitários descrevem Wisp e Butterfly Bloom. Não representa uma raridade de ovo." },
+    { key = "halloween dimension egg", name = "Halloween Dimension Egg", hint = "Ovo do evento Halloween comprado com Candy Corn segundo registro comunitário; o calendário da Part 2 terminou em 25/10/2026." },
+    { key = "halloween egg", name = "Halloween Egg", hint = "Ovo separado do Halloween Dimension Egg; guias comunitários descrevem a loja/loja Robux. Confirme se ainda está acessível." },
+    { key = "candy corn", name = "Candy Corn", hint = "Pode designar a moeda do Halloween ou um pet do Halloween Dimension Egg; confira o contexto do rótulo no jogo." },
+    { key = "hollow bat", name = "Hollow Bat", hint = "Nome listado em guia comunitário do Halloween Dimension Egg; chance/preço devem ser confirmados no painel atual." },
+    { key = "scarecrow", name = "Scarecrow", hint = "Nome listado em guia comunitário do Halloween Dimension Egg; chance/preço devem ser confirmados no painel atual." },
+    { key = "pumpkin golem", name = "Pumpkin Golem", hint = "Nome listado em guia comunitário do Halloween Dimension Egg; chance/preço devem ser confirmados no painel atual." },
+    { key = "soul phantom", name = "Soul Phantom", hint = "Nome listado em guia comunitário do Halloween Dimension Egg; chance/preço devem ser confirmados no painel atual." },
 }
 
 local function LowerText(value)
@@ -1060,6 +1073,33 @@ local function EggNameHint(object)
     return result
 end
 
+local function NormalizeCatalogText(value)
+    return LowerText(value):gsub("[^%w]", "")
+end
+
+local function MatchesEggCatalogName(value)
+    local name = LowerText(value)
+    local compactName = NormalizeCatalogText(value)
+    if name == "" or compactName == "" then return false end
+    for _, entry in ipairs(EggCatalog) do
+        local key = LowerText(entry.key)
+        local normalizedKey = key:gsub("%s+event egg$", ""):gsub("%s+egg$", "")
+        local compactKey = NormalizeCatalogText(key)
+        local compactNormalizedKey = NormalizeCatalogText(normalizedKey)
+        if key ~= "" and string.find(name, key, 1, true) then
+            return true
+        end
+        if compactKey ~= "" and string.find(compactName, compactKey, 1, true) then
+            return true
+        end
+        if #compactNormalizedKey >= 4
+            and string.find(compactName, compactNormalizedKey, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
 local function HasEggMarker(object)
     if not object then return false end
     local name = LowerText(object.Name)
@@ -1078,19 +1118,48 @@ local function HasEggMarker(object)
         return true
     end
 
-    -- Some experiences name the egg model after the animal and place it inside
-    -- an Eggs/Ovos container. Treat that container as a hint, not as proof of rarity.
+    -- Primeiro, aceita modelos dentro de pastas explicitamente chamadas Eggs/Ovos.
+    -- Isso evita depender exclusivamente do nome da peça individual.
     local parent = object.Parent
-    for _ = 1, 4 do
+    for _ = 1, 6 do
         if not parent or parent == Workspace then break end
         local parentName = LowerText(parent.Name)
         local parentIsContainer = false
         pcall(function() parentIsContainer = parent:IsA("Folder") end)
-        if parentIsContainer and (string.find(parentName, "egg", 1, true)
-            or string.find(parentName, "ovo", 1, true)) then
+        if parentIsContainer and (parentName == "eggs" or parentName == "ovo"
+            or parentName == "ovos" or parentName == "fieldeggs"
+            or parentName == "field_eggs" or parentName == "eggspawns"
+            or parentName == "egg_spawns") then
             return true
         end
         parent = parent.Parent
+    end
+
+    -- Alguns modelos de campo são nomeados pelo animal, dentro de EggWorld/FieldEggs.
+    -- Só trata como candidato se o nome corresponder ao catálogo e houver um contêiner conhecido.
+    local current = object
+    local hasKnownModelName = false
+    for _ = 1, 8 do
+        if not current or current == Workspace then break end
+        local isModel = false
+        pcall(function() isModel = current:IsA("Model") end)
+        if isModel and MatchesEggCatalogName(EggNameHint(current)) then
+            hasKnownModelName = true
+            break
+        end
+        current = current.Parent
+    end
+    if hasKnownModelName then
+        parent = object.Parent
+        for _ = 1, 8 do
+            if not parent or parent == Workspace then break end
+            local parentName = LowerText(parent.Name)
+            if parentName == "eggworld" or parentName == "field_egg" or parentName == "fieldeggs"
+                or parentName == "field_eggs" or parentName == "egg_spawns" or parentName == "eggspawns" then
+                return true
+            end
+            parent = parent.Parent
+        end
     end
     return false
 end
@@ -1142,11 +1211,16 @@ end
 
 local function EggCatalogHint(displayName)
     local name = LowerText(displayName)
+    local compactName = NormalizeCatalogText(displayName)
     for _, entry in ipairs(EggCatalog) do
         local key = LowerText(entry.key)
         local speciesKey = key:gsub("%s+event egg$", ""):gsub("%s+egg$", "")
+        local compactKey = NormalizeCatalogText(key)
+        local compactSpecies = NormalizeCatalogText(speciesKey)
         if string.find(name, key, 1, true)
-            or (speciesKey ~= "" and string.find(name, speciesKey, 1, true)) then
+            or (speciesKey ~= "" and string.find(name, speciesKey, 1, true))
+            or (compactKey ~= "" and string.find(compactName, compactKey, 1, true))
+            or (#compactSpecies >= 4 and string.find(compactName, compactSpecies, 1, true)) then
             return entry.name .. " — " .. entry.hint
         end
     end
@@ -1170,7 +1244,8 @@ local function IsEggInView(candidate, position, camera, character)
     return hit.Instance == candidate or hit.Instance:IsDescendantOf(candidate)
 end
 
--- ESP local de ovos VISÍVEIS. Não usa Drawing APIs, dados ocultos, nem profundidade através de paredes.
+-- ESP local de ovos VISÍVEIS. Usa apenas objetos/atributos replicados acessíveis ao cliente;
+-- não consulta remotes de gameplay, inventário oculto nem desenha deliberadamente através de paredes.
 local function GetEggEspPart(candidate)
     local part
     local ok = pcall(function()
@@ -1399,8 +1474,9 @@ local function PerformEggScan(token)
                                         visible = okVisible and visibleResult == true
                                     else
                                         -- Deixa de fazer raycast depois do limite para evitar pico de CPU.
-                                        -- A busca continua, mas os próximos candidatos não são confirmados visualmente.
+                                        -- Como esses candidatos não foram confirmados, o resultado é parcial.
                                         visible = false
+                                        partial = true
                                     end
                                     if visible then
                                         local displayName = EggNameHint(candidate)
@@ -1556,8 +1632,8 @@ local SettingsTab = Window:CreateTab({ name = "Configurações", icon = "setting
 
 HomeTab:CreateSection({ name = "Comece por aqui" })
 HomeTab:CreateText({
-    name = "SPEED ULTRA V10.0 • 2026",
-    text = "V10.1: scanner informativo de ovos próximos, catálogo comunitário, assistente de eventos e otimização visual reversível. Use os atalhos abaixo para as ações mais frequentes."
+    name = "SPEED ULTRA V10.2 • 2026",
+    text = "V10.2: detector de ovos com compatibilidade de contêineres ampliada, leitura de Speed do jogo quando exposta, e catálogo/evento revisados com fontes públicas. de ovos próximos, catálogo comunitário, assistente de eventos e otimização visual reversível. Use os atalhos abaixo para as ações mais frequentes."
 })
 
 StatusText = HomeTab:CreateText({
@@ -1606,7 +1682,7 @@ SpeedStatusText = SpeedTab:CreateText({
     text = "Selecione um valor e pressione Aplicar no seu próprio projeto."
 })
 CurrentSpeedText = SpeedTab:CreateText({
-    name = "WalkSpeed atual (leitura local)",
+    name = "Speed do jogo / WalkSpeed (somente leitura)",
     text = "Aguardando personagem..."
 })
 SpeedSlider = SpeedTab:CreateSlider({
@@ -1696,7 +1772,7 @@ EggScanAutoToggle = FarmTab:CreateToggle({
 })
 FarmTab:CreateText({
     name = "Catálogo de referência — não é um radar de spawn",
-    text = "Guias comunitários listam, entre outros: Chicken Egg (Forest), Swan Egg (Lake), Scorpion Egg (Desert), Tiger Egg (Jungle), Yeti Egg (Snow), Hellhound Egg (Volcano), Moby Egg (Abyss Ocean), T-Rex Egg (Prehistoric), Dragon Egg (Cosmic), Cherry Blossom Egg, Eternal Phoenix Egg, Brainrot Egg, Halloween Egg, Candy Corn event egg, Extinction Egg, Experiment #001/#013 e Luminous Egg. Requisitos/raridades podem mudar; use os preços e rótulos atuais da própria experiência para decidir."
+    text = "Referência revisada para Steal An Egg: Chicken, Bird, Owl e Raccoon aparecem no índice comunitário parcial de Forest; Frog aparece em Lake. Guias de gameplay relatam Tiger/Jungle, Yeti/área de gelo, Scorpion/Volcano, alvos em escala de baleia no Abyss Ocean e T-Rex/Prehistoric, mas nem todos são nomes literais de ovos. O histórico comunitário também lista Cherry Blossom Egg, Monster Egg, Rift Egg, Luminous Egg, Experiment #001/#013, Extinction Egg e ovos de Halloween. O detector só confirma o nome/atributos que o cliente realmente vê; preço, raridade e disponibilidade precisam ser conferidos na experiência."
 })
 
 -- Planejador manual de objetivos. Esta aba não controla movimento, interação,
@@ -2022,12 +2098,12 @@ PerformanceTab:CreateButton({
 EventTab:CreateSection({ name = "Halloween Part 2 — Update 10" })
 EventTab:CreateText({
     name = "Status da janela publicada",
-    text = "O Update 10 — Halloween Part 2 — aparece em guias comunitários como lançado em 24/10/2026. Não encontrei um prazo confiável de remoção para a parte 2; confirme no próprio jogo se a dimensão, a mansão, os chefes e as recompensas seguem disponíveis. As instruções abaixo são comunitárias, não uma confirmação oficial do desenvolvedor."
+    text = "Estado do calendário: guias comunitários reportam a janela de Halloween PART 2 entre 24/10/2026 15:00 UTC e 25/10/2026 16:34 UTC (13:34 no horário de Brasília); essa janela já terminou. Alguns elementos podem continuar acessíveis, mas isso não está confirmado para esta sessão. Verifique o portal, o trem, a mansão e os painéis de evento no jogo. A rota abaixo é um guia comunitário, não confirmação de disponibilidade atual."
 })
 
 EventTab:CreateText({
     name = "Ovos e moeda do Halloween",
-    text = "Guias comunitários do Update 9 citam Halloween Egg e Candy Corn event egg. O Candy Corn é relatado como recompensa de devolver ovos e derrotar monstros, com troca no grande pumpkin do spawn de Halloween. O preço, a chance e a disponibilidade podem mudar; confirme o contador e os requisitos dentro da experiência antes de gastar recursos."
+    text = "Guias comunitários do Update 9 descrevem dois itens diferentes: Halloween Egg da loja e Halloween Dimension Egg comprado com Candy Corn. Candy Corn também é relatado como moeda obtida ao devolver ovos e derrotar monstros, com troca na abóbora gigante do spawn. Preços e chances vieram de capturas/relatos comunitários, não de consulta ao vivo; confirme se o portal e o painel de troca ainda estão ativos antes de gastar recursos."
 })
 
 EventTab:CreateText({
@@ -2313,7 +2389,7 @@ local uiBuildOk, uiBuildError = xpcall(BuildInterface, function(err)
 end)
 
 if not uiBuildOk then
-    warn("[SPEED ULTRA V10.1] Falha ao construir a interface: " .. tostring(uiBuildError))
+    warn("[SPEED ULTRA V10.2] Falha ao construir a interface: " .. tostring(uiBuildError))
     EarlyCleanup("UI_BUILD_FAILED")
     return
 end
@@ -2365,20 +2441,52 @@ local function RefreshCharacterReferences()
     end)
 end
 
+local function ReadReplicatedGameSpeed()
+    -- Somente leitura: consulta atributos e valores replicados comuns, sem escrever neles.
+    local names = { "SpeedPower", "Speed", "CurrentSpeed", "TotalSpeed" }
+    local containers = { Player }
+    for _, containerName in ipairs({ "leaderstats", "Data", "Stats", "PlayerData" }) do
+        local container = Player:FindFirstChild(containerName)
+        if container then containers[#containers + 1] = container end
+    end
+
+    for _, container in ipairs(containers) do
+        for _, statName in ipairs(names) do
+            local attribute
+            pcall(function() attribute = container:GetAttribute(statName) end)
+            if type(attribute) == "number" then
+                return string.format("%s: %s", statName, tostring(attribute))
+            end
+            local valueObject = container:FindFirstChild(statName)
+            if valueObject and (valueObject:IsA("NumberValue") or valueObject:IsA("IntValue")) then
+                local numberValue
+                pcall(function() numberValue = valueObject.Value end)
+                if type(numberValue) == "number" then
+                    return string.format("%s: %s", statName, tostring(numberValue))
+                end
+            end
+        end
+    end
+    return nil
+end
+
 local function RefreshSpeedReadout()
     if not CurrentSpeedText or not State.Alive then
         return
     end
     local humanoid = Player.Character and Player.Character:FindFirstChildOfClass("Humanoid")
-    local value = "indisponível"
+    local walkSpeed = nil
     if humanoid and humanoid.Parent then
-        pcall(function()
-            value = string.format("%.1f studs/s", humanoid.WalkSpeed)
-        end)
-    else
-        value = "aguardando personagem"
+        pcall(function() walkSpeed = humanoid.WalkSpeed end)
     end
-    pcall(function() CurrentSpeedText:Set(value .. " • leitura local, não é confirmação do servidor") end)
+    local gameSpeed = ReadReplicatedGameSpeed()
+    local parts = {}
+    if gameSpeed then parts[#parts + 1] = gameSpeed end
+    if type(walkSpeed) == "number" then
+        parts[#parts + 1] = string.format("WalkSpeed %.1f studs/s", walkSpeed)
+    end
+    local value = #parts > 0 and table.concat(parts, " | ") or "Stat Speed não exposto; aguardando personagem"
+    pcall(function() CurrentSpeedText:Set(value .. " • somente leitura; não altera a velocidade do servidor") end)
 end
 
 local function BuildDiagnosticText()
@@ -2564,7 +2672,7 @@ local function Cleanup(reason)
     end)
 
     if reason and reason ~= "USER_UNLOAD" and reason ~= "RELOAD" then
-        warn("[SPEED ULTRA V10.1] Encerrado: " .. tostring(reason))
+        warn("[SPEED ULTRA V10.2] Encerrado: " .. tostring(reason))
     end
 end
 
@@ -2579,4 +2687,4 @@ if State.VisualOptimization then
     SetVisualOptimization(true)
 end
 
-print("[SPEED ULTRA V10.1] Inicializado com Rayfield Gen2; ESP de ovos visíveis disponível; instância única ativa.")
+print("[SPEED ULTRA V10.2] Inicializado com Rayfield Gen2; ESP de ovos visíveis disponível; instância única ativa.")
