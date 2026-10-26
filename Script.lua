@@ -1,5 +1,6 @@
 --[[
-    SPEED ULTRA V10.2 — 2026
+    SPEED ULTRA V11.0 — 2026
+    Refatoração auditada: leitura de Speed separada de WalkSpeed e diagnóstico de objetos para o detector.
     Código único para o Roube um Ovo: ovos/ESP informativo, acompanhamento de eventos,
     leitura local de Speed e otimização visual reversível; mantém a interface existente.
     Revisão de catálogo/evento em 26/10/2026 a partir da página Roblox e guias comunitários.
@@ -25,10 +26,10 @@
       • restauração/encerramento da sessão anterior e verificação do token após esperas;
       • aviso explícito de que não existe modo Anti-Ban implementado nem garantia contra punições;
       • abas reorganizadas e atalhos para ações frequentes;
-      • seletor de velocidade para projeto próprio via RemoteEvent validado no servidor (8–32);
+      • leitura recursiva da estatística Speed e meta de acompanhamento; controle WalkSpeed separado para projeto próprio (8–1000 via servidor autorizado);
 
-    Nota: o ESP só destaca ovos identificáveis que a busca já vê; não lê dados ocultos.
-    Não altera WalkSpeed, colisões, massa ou física do jogo. Não automatiza coleta,
+    Nota: o ESP só destaca ovos identificáveis que a busca já vê; não lê dados ocultos. O botão de diagnóstico ajuda a mapear nomes/caminhos reais quando o detector não encontra o objeto.
+    Não altera WalkSpeed, colisões, massa ou física do jogo público. O limite 1000 só é aceito pelo script de servidor autorizado incluído no final deste TXT para uma experiência própria; ele não cria um RemoteEvent no Roube um Ovo oficial. Não automatiza coleta,
     teleporte ou interação em servidores públicos. Para mecânicas de movimento
     e entrega de ovos num jogo próprio, implemente a lógica autorizada no servidor.
     Segurança: a instância única é proteção contra conflito local, NÃO é Anti-Ban.
@@ -211,13 +212,13 @@ end
 if loadOk then
     Rayfield = loadResult
 else
-    warn("[SPEED ULTRA V10.2] Não foi possível carregar Rayfield Gen2: " .. tostring(loadResult))
+    warn("[SPEED ULTRA V11.0] Não foi possível carregar Rayfield Gen2: " .. tostring(loadResult))
     ReleaseBootReservation()
     return
 end
 
 if type(Rayfield) ~= "table" or type(Rayfield.CreateWindow) ~= "function" then
-    warn("[SPEED ULTRA V10.2] Rayfield Gen2 não retornou uma API válida; a interface não foi iniciada.")
+    warn("[SPEED ULTRA V11.0] Rayfield Gen2 não retornou uma API válida; a interface não foi iniciada.")
     ReleaseBootReservation()
     return
 end
@@ -297,7 +298,14 @@ local ObjectiveDropdown
 local CarryStatusText
 local SpeedStatusText
 local CurrentSpeedText
+local SpeedGoalText
+local SpeedGoalInput
 local SpeedSlider
+local RefreshSpeedReadout -- forward declaration so UI callbacks can call it safely
+local UpdateSpeedGoalDisplay
+local CurrentGameSpeedValue = nil
+local CurrentGameSpeedPath = nil
+local DesiredGameSpeedGoal = 2500000
 local RuntimeDiagnosticsText
 local EggScanText
 local EggScanRangeSlider
@@ -312,6 +320,8 @@ local SpeedRequestSerial = 0
 local RestoreVisualProperties
 local ClearEggEspVisuals
 local EggEspStatusText
+local EggDiagnosticText
+local EggDiagnosticRunning = false
 local EggEspEnabled = false
 local EggEspObjects = setmetatable({}, { __mode = "k" })
 local EggScanSchedulerToken = 0
@@ -411,6 +421,30 @@ local function UpdateSpeedStatus(text)
     end)
 end
 
+UpdateSpeedGoalDisplay = function()
+    if not SpeedGoalText or not State.Alive then return end
+    local target = math.max(0, math.floor(tonumber(DesiredGameSpeedGoal) or 0))
+    local current = CurrentGameSpeedValue
+    local message
+    if type(current) ~= "number" then
+        message = string.format(
+            "Meta escolhida: %.0f Speed\nAinda não encontrei a estatística real do jogo no cliente. Isso pode significar que ela não é replicada como Value/atributo ou que o nome mudou.",
+            target
+        )
+    elseif current >= target then
+        message = string.format(
+            "Speed atual detectada: %.0f\nMeta: %.0f\nMeta atingida. Fonte: %s",
+            current, target, tostring(CurrentGameSpeedPath or "origem não identificada")
+        )
+    else
+        message = string.format(
+            "Speed atual detectada: %.0f\nMeta: %.0f\nFaltam: %.0f Speed\nFonte: %s",
+            current, target, target - current, tostring(CurrentGameSpeedPath or "origem não identificada")
+        )
+    end
+    pcall(function() SpeedGoalText:Set(message) end)
+end
+
 local function BindSpeedResultRemote()
     if SpeedResultBound then
         return
@@ -448,10 +482,10 @@ local function RequestProjectSpeed(speed)
 
     local normalized = tonumber(speed)
     if not normalized or normalized ~= normalized or normalized == math.huge or normalized == -math.huge then
-        UpdateSpeedStatus("Valor inválido. Escolha entre 8 e 32.")
+        UpdateSpeedStatus("Valor inválido. Escolha entre 8 e 1000.")
         return
     end
-    normalized = math.clamp(math.floor(normalized + 0.5), 8, 32)
+    normalized = math.clamp(math.floor(normalized + 0.5), 8, 1000)
 
     local remote = ReplicatedStorage:FindFirstChild(SPEED_REQUEST_REMOTE)
     if not remote or not remote:IsA("RemoteEvent") then
@@ -976,8 +1010,8 @@ end
 
 local WindowCreateOk, CreatedWindow = pcall(function()
     return Rayfield:CreateWindow({
-        name = "SPEED ULTRA V10.0",
-        subtitle = "2026 • Mobile Edition • V10.0",
+        name = "SPEED ULTRA V11.0",
+        subtitle = "2026 • Mobile Edition • V11.0",
         sidebarLayout = true,
         theme = "amethyst",
         showName = "SPEED ULTRA",
@@ -993,7 +1027,7 @@ local WindowCreateOk, CreatedWindow = pcall(function()
 end)
 
 if not WindowCreateOk or not CreatedWindow then
-    warn("[SPEED ULTRA V10.2] Falha ao criar a janela Rayfield: " .. tostring(CreatedWindow))
+    warn("[SPEED ULTRA V11.0] Falha ao criar a janela Rayfield: " .. tostring(CreatedWindow))
     ReleaseBootReservation()
     return
 end
@@ -1024,8 +1058,14 @@ end
 -- do raio selecionado e com linha de visão aproximada. Não interage com o jogo.
 -- =========================================================
 local EggCatalog = {
-    -- Nomes/biomas de referência. O catálogo separa os fatos comunitários do que
-    -- precisa ser confirmado no jogo; não inventa preço, chance ou raridade.
+    -- Nomes/biomas de referência. Lista conferida em guia comunitário atualizado em 26/10/2026;
+    -- requisitos e disponibilidade podem mudar e devem ser confirmados no jogo.
+    { key = "chicken egg", name = "Chicken Egg", hint = "Forest / área inicial; listado no índice comunitário como ovo do Forest Guardian." },
+    { key = "swan egg", name = "Swan Egg", hint = "Lake: guia comunitário lista requisito de 900 Speed; confirme o portal/guardião no jogo." },
+    { key = "scorpion egg", name = "Scorpion Egg", hint = "Desert: guia comunitário lista requisito de 10.000 Speed; confirme no jogo." },
+    { key = "tiger egg", name = "Tiger Egg", hint = "Jungle: guia comunitário lista requisito de 40.000 Speed; confirme no jogo." },
+    { key = "yeti egg", name = "Yeti Egg", hint = "Snow: guia comunitário lista requisito de 170.000 Speed; confirme no jogo." },
+    { key = "hellhound egg", name = "Hellhound Egg", hint = "Volcano: guia comunitário lista requisito de 700.000 Speed; confirme no jogo." },
     { key = "chicken", name = "Chicken / Forest", hint = "Pet Index comunitário: Chicken aparece como Common; $1/s foi observado na ficha, não é raridade do ovo." },
     { key = "bird", name = "Bird / Forest", hint = "Nome no índice comunitário parcial; raridade e renda não confirmadas na fonte consultada." },
     { key = "owl", name = "Owl / Forest", hint = "Nome no índice comunitário parcial; raridade e renda não confirmadas na fonte consultada." },
@@ -1613,6 +1653,104 @@ local function SetEggEspEnabled(enabled)
     end
 end
 
+local function GetShortInstancePath(instance, maxParents)
+    local names = {}
+    local current = instance
+    local count = 0
+    while current and count < (maxParents or 6) do
+        local ok, name = pcall(function() return current.Name end)
+        names[#names + 1] = ok and tostring(name) or "?"
+        current = current.Parent
+        count += 1
+    end
+    local reversed = {}
+    for i = #names, 1, -1 do reversed[#reversed + 1] = names[i] end
+    return table.concat(reversed, ".")
+end
+
+local function DiagnoseEggHierarchy()
+    if EggDiagnosticRunning or not State.Alive then
+        if EggDiagnosticText then pcall(function() EggDiagnosticText:Set("Diagnóstico já está rodando; aguarde o resultado.") end) end
+        return
+    end
+    EggDiagnosticRunning = true
+    if EggDiagnosticText then pcall(function() EggDiagnosticText:Set("Inspecionando os nomes visíveis no Workspace em lotes...") end) end
+
+    task.spawn(function()
+        local startedAt = os.clock()
+        local stack = { Workspace }
+        local inspected = 0
+        local maxObjects = 14000
+        local maxSeconds = 6
+        local matches = {}
+        local seenNames = {}
+        local partial = false
+        local keywords = { "egg", "ovo", "nest", "ninho", "spawn", "chicken", "swan", "scorpion", "tiger", "yeti", "hellhound", "frog", "halloween", "voidseer", "pumpkin" }
+
+        while #stack > 0 do
+            if not State.Alive then EggDiagnosticRunning = false; return end
+            if inspected >= maxObjects or os.clock() - startedAt >= maxSeconds then
+                partial = true
+                break
+            end
+            local parent = stack[#stack]
+            stack[#stack] = nil
+            local children
+            local okChildren = pcall(function() children = parent:GetChildren() end)
+            if okChildren and type(children) == "table" then
+                for _, object in ipairs(children) do
+                    inspected += 1
+                    stack[#stack + 1] = object
+                    local className = ""
+                    pcall(function()
+                        if object:IsA("Model") then className = "Model"
+                        elseif object:IsA("BasePart") then className = "BasePart"
+                        elseif object:IsA("Folder") then className = "Folder" end
+                    end)
+                    if className == "Model" or className == "BasePart" or className == "Folder" then
+                        local objectName = EggNameHint(object)
+                        local lowerName = LowerText(objectName)
+                        local candidate = false
+                        for _, keyword in ipairs(keywords) do
+                            if string.find(lowerName, keyword, 1, true) then candidate = true; break end
+                        end
+                        if not candidate and (className == "Model" or className == "BasePart") then
+                            candidate = MatchesEggCatalogName(objectName)
+                        end
+                        if candidate then
+                            local path = GetShortInstancePath(object, 7)
+                            local key = className .. "|" .. path
+                            if not seenNames[key] then
+                                seenNames[key] = true
+                                matches[#matches + 1] = className .. " | " .. path
+                            end
+                        end
+                    end
+                    if inspected % 100 == 0 then
+                        task.wait(0.01)
+                        if os.clock() - startedAt >= maxSeconds then partial = true; break end
+                    end
+                    if inspected >= maxObjects then partial = true; break end
+                end
+            end
+            if partial then break end
+        end
+
+        table.sort(matches)
+        local lines = {
+            string.format("Diagnóstico da estrutura: %d objetos examinados em %.1fs%s", inspected, os.clock() - startedAt, partial and " (parcial; limite atingido)" or ""),
+            string.format("Caminhos candidatos encontrados: %d", #matches),
+        }
+        for i = 1, math.min(24, #matches) do lines[#lines + 1] = string.format("%d. %s", i, matches[i]) end
+        if #matches == 0 then
+            lines[#lines + 1] = "Nenhum nome candidato foi exposto nesta busca. Isso explica por que o detector não identificou ovos com as regras atuais; não significa que o jogo não tenha ovos."
+        end
+        lines[#lines + 1] = "Envie este texto se o detector não reconhecer um ovo visível; ele ajuda a ajustar as regras ao nome real sem adivinhar a estrutura do jogo."
+        if EggDiagnosticText and State.Alive then pcall(function() EggDiagnosticText:Set(table.concat(lines, "\n")) end) end
+        EggDiagnosticRunning = false
+    end)
+end
+
 local function BuildInterface()
 -- Grupos da barra lateral para ficar fácil achar cada função no celular.
 Window:CreateSection({ name = "Principal" })
@@ -1632,8 +1770,8 @@ local SettingsTab = Window:CreateTab({ name = "Configurações", icon = "setting
 
 HomeTab:CreateSection({ name = "Comece por aqui" })
 HomeTab:CreateText({
-    name = "SPEED ULTRA V10.2 • 2026",
-    text = "V10.2: detector de ovos com compatibilidade de contêineres ampliada, leitura de Speed do jogo quando exposta, e catálogo/evento revisados com fontes públicas. de ovos próximos, catálogo comunitário, assistente de eventos e otimização visual reversível. Use os atalhos abaixo para as ações mais frequentes."
+    name = "SPEED ULTRA V11.0 • 2026",
+    text = "V11.0: leitura recursiva da estatística Speed quando exposta, meta de Speed separada de WalkSpeed, diagnóstico da hierarquia dos ovos, catálogo comunitário, assistente de eventos e otimização visual reversível. Use os atalhos abaixo para as ações mais frequentes."
 })
 
 StatusText = HomeTab:CreateText({
@@ -1670,44 +1808,93 @@ HomeTab:CreateButton({
     end
 })
 
--- Seletor de velocidade para jogo próprio. O servidor deve instalar
--- SpeedUltraAuthorizedSpeed.server.lua e validar o jogador autorizado.
-SpeedTab:CreateSection({ name = "Velocidade no Roube um Ovo" })
+-- O Speed de progressão do jogo NÃO é a mesma propriedade que Humanoid.WalkSpeed.
+-- Esta primeira seção acompanha a estatística real se estiver replicada ao cliente.
+SpeedTab:CreateSection({ name = "Speed real do jogo — acompanhamento" })
 SpeedTab:CreateText({
-    name = "Como funciona",
-    text = "O jogo oficial orienta treinar na esteira e melhorar os upgrades. O indicador abaixo lê a WalkSpeed local atual; ele não mede SpeedPower nem garante que o servidor aceitou uma mudança. Para evitar uma falsa promessa, o slider de 8–32 só envia pedidos a um servidor autorizado de uma experiência própria; não força velocidade no servidor público."
-})
-SpeedStatusText = SpeedTab:CreateText({
-    name = "Estado do pedido",
-    text = "Selecione um valor e pressione Aplicar no seu próprio projeto."
+    name = "Diferença importante",
+    text = "No Steal an Egg, a estatística Speed é a progressão que você aumenta na esteira e usa para liberar biomas. WalkSpeed é a velocidade de caminhada em studs/s. Este acompanhamento pode ler Speed quando o jogo a expõe, mas não altera a estatística do servidor."
 })
 CurrentSpeedText = SpeedTab:CreateText({
-    name = "Speed do jogo / WalkSpeed (somente leitura)",
-    text = "Aguardando personagem..."
+    name = "Speed real / WalkSpeed",
+    text = "Procurando a estatística replicada do jogo..."
+})
+SpeedGoalText = SpeedTab:CreateText({
+    name = "Progresso até a meta",
+    text = "Meta inicial: 2.500.000 Speed. Atualize a leitura para comparar com a sua estatística atual."
+})
+SpeedGoalInput = SpeedTab:CreateInput({
+    name = "Definir meta de Speed (número exato)",
+    description = "Define uma meta de acompanhamento, não muda a estatística do servidor. Digite somente dígitos, por exemplo 2500000.",
+    placeholder = "2500000",
+    value = tostring(DesiredGameSpeedGoal),
+    numeric = true,
+    removeTextAfterFocusLost = false,
+    callback = function(text)
+        local normalized = tostring(text or ""):gsub("%s+", "")
+        local target = tonumber(normalized)
+        if not target or target ~= target or target == math.huge or target == -math.huge or target < 0 or target > 1000000000000000 then
+            UpdateSpeedStatus("Meta inválida. Digite um número entre 0 e 1000000000000000, sem separadores.")
+            if SpeedGoalInput then pcall(function() SpeedGoalInput:Set(tostring(DesiredGameSpeedGoal)) end) end
+            return
+        end
+        DesiredGameSpeedGoal = math.floor(target + 0.5)
+        UpdateSpeedGoalDisplay()
+        UpdateSpeedStatus(string.format("Meta de acompanhamento definida: %.0f Speed. Isso não altera a estatística do jogo.", DesiredGameSpeedGoal))
+    end
+})
+SpeedTab:CreateButton({
+    name = "Atualizar leitura de Speed",
+    description = "Procura novamente a estatística em atributos/ValueObjects replicados e tenta ler o painel de Speed visível.",
+    callback = function()
+        if RefreshSpeedReadout then
+            RefreshSpeedReadout()
+            UpdateSpeedGoalDisplay()
+            UpdateSpeedStatus("Leitura de Speed atualizada. Confira a fonte exibida e compare com sua meta.")
+        else
+            UpdateSpeedStatus("Leitura ainda não pronta; aguarde o personagem carregar.")
+        end
+    end
+})
+SpeedTab:CreateButton({
+    name = "Como aumentar Speed no jogo",
+    description = "Mostra o método normal de progressão.",
+    callback = function()
+        UpdateSpeedStatus("Para aumentar a estatística Speed no Steal an Egg, use a esteira e os upgrades disponíveis no próprio jogo. O valor de WalkSpeed não substitui esse requisito.")
+    end
+})
+
+-- Controle de WalkSpeed exclusivamente para uma experiência própria com servidor autorizado.
+SpeedTab:CreateSection({ name = "WalkSpeed — somente projeto próprio" })
+SpeedTab:CreateText({
+    name = "Controle autorizado",
+    text = "O controle abaixo envia um pedido ao RemoteEvent criado pelo Script de servidor fornecido no final deste TXT. Ele só funciona na sua própria experiência, com o servidor instalado e jogador autorizado; não altera o Steal an Egg público."
+})
+SpeedStatusText = SpeedTab:CreateText({
+    name = "Estado do pedido autorizado",
+    text = "Disponível somente em uma experiência sua com o Script de servidor instalado."
 })
 SpeedSlider = SpeedTab:CreateSlider({
-    name = "Velocidade desejada",
-    description = "Intervalo limitado pelo servidor a 8–32 studs/s.",
-    range = { 8, 32 },
+    name = "WalkSpeed desejada (projeto próprio)",
+    description = "8–1000 studs/s. Valores altos podem deixar o personagem incontrolável; o servidor deve validar a autorização.",
+    range = { 8, 1000 },
     increment = 1,
     suffix = " studs/s",
     value = DesiredProjectSpeed,
-    flag = "AuthorizedProjectSpeedV96",
+    flag = "AuthorizedProjectSpeedV110",
     callback = function(value)
         if type(value) ~= "number" then return end
-        DesiredProjectSpeed = math.clamp(math.floor(value + 0.5), 8, 32)
-        UpdateSpeedStatus(string.format("Selecionado: %d studs/s. Pressione Aplicar para enviar ao servidor do seu projeto.", DesiredProjectSpeed))
+        DesiredProjectSpeed = math.clamp(math.floor(value + 0.5), 8, 1000)
+        UpdateSpeedStatus(string.format("Selecionado: %d studs/s. Só é aplicado se o servidor autorizado do seu próprio projeto estiver instalado.", DesiredProjectSpeed))
     end
 })
 SpeedTab:CreateButton({
-    name = "Aplicar velocidade no meu projeto",
+    name = "Aplicar WalkSpeed no meu projeto",
     description = "Envia a solicitação ao RemoteEvent que o script de servidor seguro cria.",
-    callback = function()
-        RequestProjectSpeed(DesiredProjectSpeed)
-    end
+    callback = function() RequestProjectSpeed(DesiredProjectSpeed) end
 })
 SpeedTab:CreateButton({
-    name = "Restaurar velocidade padrão (16)",
+    name = "Restaurar WalkSpeed padrão (16)",
     description = "Solicita ao servidor autorizado a velocidade padrão de 16 studs/s.",
     callback = function()
         DesiredProjectSpeed = 16
@@ -1716,14 +1903,6 @@ SpeedTab:CreateButton({
     end
 })
 BindSpeedResultRemote()
-
-SpeedTab:CreateButton({
-    name = "Como ganhar velocidade no Roube um Ovo",
-    description = "Mostra o método de jogo disponível no próprio jogo público.",
-    callback = function()
-        UpdateSpeedStatus("Roube um Ovo público: use a esteira dentro do jogo para ganhar velocidade. Este slider só aplica velocidade em um projeto próprio com servidor autorizado.")
-    end
-})
 
 -- Detector e catálogo de ovos: informativo, com varredura manual como padrão.
 FarmTab:CreateSection({ name = "Detector de ovos visíveis" })
@@ -1762,6 +1941,15 @@ FarmTab:CreateButton({
     name = "Escanear ovos visíveis agora",
     description = "Faz uma busca incremental limitada por tempo e quantidade de objetos para reduzir picos de processamento; pode informar resultado parcial.",
     callback = function() ScanEggsOnce() end
+})
+EggDiagnosticText = FarmTab:CreateText({
+    name = "Diagnóstico da estrutura dos ovos",
+    text = "Ainda não executado. Use o botão de diagnóstico se a busca não encontrar um ovo que está visível no jogo."
+})
+FarmTab:CreateButton({
+    name = "Diagnosticar nomes reais dos objetos",
+    description = "Inspeciona nomes e caminhos visíveis no Workspace para descobrir por que um ovo não foi reconhecido; não interage com o jogo.",
+    callback = function() DiagnoseEggHierarchy() end
 })
 EggScanAutoToggle = FarmTab:CreateToggle({
     name = "Atualizar detector automaticamente",
@@ -2098,7 +2286,7 @@ PerformanceTab:CreateButton({
 EventTab:CreateSection({ name = "Halloween Part 2 — Update 10" })
 EventTab:CreateText({
     name = "Status da janela publicada",
-    text = "Estado do calendário: guias comunitários reportam a janela de Halloween PART 2 entre 24/10/2026 15:00 UTC e 25/10/2026 16:34 UTC (13:34 no horário de Brasília); essa janela já terminou. Alguns elementos podem continuar acessíveis, mas isso não está confirmado para esta sessão. Verifique o portal, o trem, a mansão e os painéis de evento no jogo. A rota abaixo é um guia comunitário, não confirmação de disponibilidade atual."
+    text = "A listagem pública da janela de Halloween Part 2 terminou em 25/10/2026, mas guias comunitários atualizados em 26/10 ainda descrevem as etapas do Update 10 e a rota da Manor Key. O fim da janela publicada não prova, por si só, que cada objeto do Update 10 esteja desativado. Confira o portal, o trem, a mansão e os painéis do evento nesta sessão; a rota abaixo é um guia comunitário, não confirmação de disponibilidade em tempo real."
 })
 
 EventTab:CreateText({
@@ -2389,7 +2577,7 @@ local uiBuildOk, uiBuildError = xpcall(BuildInterface, function(err)
 end)
 
 if not uiBuildOk then
-    warn("[SPEED ULTRA V10.2] Falha ao construir a interface: " .. tostring(uiBuildError))
+    warn("[SPEED ULTRA V11.0] Falha ao construir a interface: " .. tostring(uiBuildError))
     EarlyCleanup("UI_BUILD_FAILED")
     return
 end
@@ -2441,28 +2629,126 @@ local function RefreshCharacterReferences()
     end)
 end
 
+local function NormalizeSpeedStatName(value)
+    return LowerText(value):gsub("[^%w]", "")
+end
+
+local SPEED_STAT_PRIORITY = {
+    speed = 1,
+    speedpower = 2,
+    currentspeed = 3,
+    totalspeed = 4,
+    speedstat = 5,
+    speedvalue = 6,
+    speedamount = 7,
+}
+
+local function ParseSpeedNumber(value)
+    if type(value) == "number" then
+        if value == value and value ~= math.huge and value ~= -math.huge then return value end
+        return nil
+    end
+    if type(value) ~= "string" then return nil end
+    local raw = value:lower():gsub("%s+", "")
+    -- Aceita separadores comuns em HUDs: 2,500,000 e 2.500.000; preserva 2.5M.
+    if raw:match("^%d+%.%d%d%d(%.%d%d%d)+$") then
+        raw = raw:gsub("%.", "")
+    else
+        raw = raw:gsub(",", "")
+    end
+    local numText, suffix = raw:match("^([%d%.]+)([kmb]?)$")
+    if not numText then return nil end
+    local number = tonumber(numText)
+    if not number then return nil end
+    if suffix == "k" then number *= 1000
+    elseif suffix == "m" then number *= 1000000
+    elseif suffix == "b" then number *= 1000000000 end
+    return number
+end
+
 local function ReadReplicatedGameSpeed()
-    -- Somente leitura: consulta atributos e valores replicados comuns, sem escrever neles.
-    local names = { "SpeedPower", "Speed", "CurrentSpeed", "TotalSpeed" }
-    local containers = { Player }
-    for _, containerName in ipairs({ "leaderstats", "Data", "Stats", "PlayerData" }) do
-        local container = Player:FindFirstChild(containerName)
-        if container then containers[#containers + 1] = container end
+    -- Pesquisa recursivamente no Player/leaderstats/Data; o script não escreve nestes valores.
+    local objects = { Player }
+    local okDesc, descendants = pcall(function() return Player:GetDescendants() end)
+    if okDesc and type(descendants) == "table" then
+        for _, object in ipairs(descendants) do objects[#objects + 1] = object end
     end
 
-    for _, container in ipairs(containers) do
-        for _, statName in ipairs(names) do
-            local attribute
-            pcall(function() attribute = container:GetAttribute(statName) end)
-            if type(attribute) == "number" then
-                return string.format("%s: %s", statName, tostring(attribute))
+    local candidates = {}
+    local function addCandidate(name, rawValue, path, isAttribute)
+        local key = NormalizeSpeedStatName(name)
+        local priority = SPEED_STAT_PRIORITY[key]
+        local number = ParseSpeedNumber(rawValue)
+        if priority and number ~= nil then
+            candidates[#candidates + 1] = {
+                name = tostring(name), value = number, path = path,
+                priority = priority, attribute = isAttribute == true,
+            }
+        end
+    end
+
+    for _, object in ipairs(objects) do
+        local name = ""
+        pcall(function() name = object.Name end)
+        local path = name
+        pcall(function() path = object:GetFullName() end)
+
+        local isValue = false
+        pcall(function() isValue = object:IsA("ValueBase") end)
+        if isValue then
+            local value
+            pcall(function() value = object.Value end)
+            addCandidate(name, value, path, false)
+        end
+
+        local attributes
+        pcall(function() attributes = object:GetAttributes() end)
+        if type(attributes) == "table" then
+            for attributeName, attributeValue in pairs(attributes) do
+                addCandidate(attributeName, attributeValue, path .. ".<attr:" .. tostring(attributeName) .. ">", true)
             end
-            local valueObject = container:FindFirstChild(statName)
-            if valueObject and (valueObject:IsA("NumberValue") or valueObject:IsA("IntValue")) then
-                local numberValue
-                pcall(function() numberValue = valueObject.Value end)
-                if type(numberValue) == "number" then
-                    return string.format("%s: %s", statName, tostring(numberValue))
+        end
+    end
+
+    table.sort(candidates, function(a, b)
+        if a.priority ~= b.priority then return a.priority < b.priority end
+        if a.attribute ~= b.attribute then return not a.attribute end
+        return #a.path < #b.path
+    end)
+    if #candidates > 0 then return candidates[1] end
+
+    -- Fallback somente de leitura: tenta extrair Speed de um texto de HUD visível ao cliente.
+    local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+    if playerGui then
+        local guiDescendants
+        local okGui = pcall(function() guiDescendants = playerGui:GetDescendants() end)
+        if okGui and type(guiDescendants) == "table" then
+            for _, object in ipairs(guiDescendants) do
+                local isText = false
+                pcall(function() isText = object:IsA("TextLabel") or object:IsA("TextButton") end)
+                if isText then
+                    local labelName, content = "", ""
+                    pcall(function() labelName = object.Name end)
+                    pcall(function() content = object.Text end)
+                    local normalizedName = NormalizeSpeedStatName(labelName)
+                    local lowerContent = tostring(content or ""):lower()
+                    local looksLikeOurReadout = string.find(lowerContent, "origem:", 1, true)
+                        or string.find(lowerContent, "meta escolhida:", 1, true)
+                        or string.find(lowerContent, "meta:", 1, true)
+                        or string.find(lowerContent, "faltam:", 1, true)
+                    if string.find(normalizedName, "speed", 1, true)
+                        and not string.find(normalizedName, "speedultra", 1, true)
+                        and not looksLikeOurReadout then
+                        local compact = tostring(content or ""):lower():gsub(",", "")
+                        local raw = compact:match("speed[^%d]*([%d%.]+%s*[kmb]?)")
+                            or compact:match("^%s*([%d%.]+%s*[kmb]?)%s*$")
+                        local number = raw and ParseSpeedNumber(raw:gsub("%s+", "")) or nil
+                        if number ~= nil then
+                            local path = labelName
+                            pcall(function() path = object:GetFullName() end)
+                            return { name = labelName, value = number, path = path, priority = 99, attribute = false, fromHud = true }
+                        end
+                    end
                 end
             end
         end
@@ -2470,23 +2756,28 @@ local function ReadReplicatedGameSpeed()
     return nil
 end
 
-local function RefreshSpeedReadout()
-    if not CurrentSpeedText or not State.Alive then
-        return
-    end
+RefreshSpeedReadout = function()
+    if not CurrentSpeedText or not State.Alive then return end
     local humanoid = Player.Character and Player.Character:FindFirstChildOfClass("Humanoid")
     local walkSpeed = nil
-    if humanoid and humanoid.Parent then
-        pcall(function() walkSpeed = humanoid.WalkSpeed end)
-    end
+    if humanoid and humanoid.Parent then pcall(function() walkSpeed = humanoid.WalkSpeed end) end
+
     local gameSpeed = ReadReplicatedGameSpeed()
     local parts = {}
-    if gameSpeed then parts[#parts + 1] = gameSpeed end
-    if type(walkSpeed) == "number" then
-        parts[#parts + 1] = string.format("WalkSpeed %.1f studs/s", walkSpeed)
+    if gameSpeed and type(gameSpeed.value) == "number" then
+        CurrentGameSpeedValue = gameSpeed.value
+        CurrentGameSpeedPath = gameSpeed.path
+        parts[#parts + 1] = string.format("Speed do jogo: %.0f (origem: %s)", gameSpeed.value, tostring(gameSpeed.path or "não identificada"))
+    else
+        CurrentGameSpeedValue = nil
+        CurrentGameSpeedPath = nil
+        parts[#parts + 1] = "Speed do jogo: não localizada em dados/atributos/textos do HUD expostos ao cliente"
     end
-    local value = #parts > 0 and table.concat(parts, " | ") or "Stat Speed não exposto; aguardando personagem"
-    pcall(function() CurrentSpeedText:Set(value .. " • somente leitura; não altera a velocidade do servidor") end)
+    if type(walkSpeed) == "number" then
+        parts[#parts + 1] = string.format("WalkSpeed: %.1f studs/s (propriedade separada)", walkSpeed)
+    end
+    pcall(function() CurrentSpeedText:Set(table.concat(parts, "\n")) end)
+    UpdateSpeedGoalDisplay()
 end
 
 local function BuildDiagnosticText()
@@ -2672,7 +2963,7 @@ local function Cleanup(reason)
     end)
 
     if reason and reason ~= "USER_UNLOAD" and reason ~= "RELOAD" then
-        warn("[SPEED ULTRA V10.2] Encerrado: " .. tostring(reason))
+        warn("[SPEED ULTRA V11.0] Encerrado: " .. tostring(reason))
     end
 end
 
@@ -2687,4 +2978,160 @@ if State.VisualOptimization then
     SetVisualOptimization(true)
 end
 
-print("[SPEED ULTRA V10.2] Inicializado com Rayfield Gen2; ESP de ovos visíveis disponível; instância única ativa.")
+print("[SPEED ULTRA V11.0] Inicializado com Rayfield Gen2; ESP de ovos visíveis disponível; instância única ativa.")
+
+--[=[
+==========================================================================
+APÊNDICE — SCRIPT DE SERVIDOR PARA EXPERIÊNCIA PRÓPRIA (NÃO EXECUTAR NO DELTA)
+==========================================================================
+INSTRUÇÕES:
+1. Este código NÃO controla a experiência pública Roube um Ovo.
+2. Para usar velocidade até 1000 no SEU jogo, copie somente o código abaixo
+   para um Script em ServerScriptService no Roblox Studio.
+3. Em jogo de grupo, adicione os UserIds autorizados em AUTHORIZED_USER_IDS.
+4. WalkSpeed 1000 pode tornar o personagem incontrolável e causar problemas
+   de física/replicação. O teto é configurável; comece com valores menores.
+
+--- CÓDIGO DO SCRIPT DE SERVIDOR ---
+-- SpeedUltraAuthorizedSpeed.server.lua
+-- Instale este Script em ServerScriptService SOMENTE no seu próprio jogo Roblox.
+-- Ele habilita o controle da aba "Velocidade" da UI V11.0 por um RemoteEvent autorizado.
+-- Por padrão, somente o proprietário de uma experiência de usuário pode alterar a velocidade.
+-- Em experiências de grupo, acrescente UserIds autorizados à tabela abaixo.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local REQUEST_REMOTE_NAME = "SpeedUltraAuthorizedSpeedRequest"
+local RESULT_REMOTE_NAME = "SpeedUltraAuthorizedSpeedResult"
+local DEFAULT_SPEED = 16
+local MIN_SPEED = 8
+local MAX_SPEED = 1000
+local REQUEST_COOLDOWN = 0.25
+
+-- Para experiências pertencentes a grupo, adicione aqui os UserIds dos administradores.
+-- Exemplo: [123456789] = true,
+local AUTHORIZED_USER_IDS = {
+}
+
+local function getOrCreateRemoteEvent(name)
+    local existing = ReplicatedStorage:FindFirstChild(name)
+    if existing then
+        assert(existing:IsA("RemoteEvent"), name .. " já existe, mas não é RemoteEvent")
+        return existing
+    end
+
+    local remote = Instance.new("RemoteEvent")
+    remote.Name = name
+    remote.Parent = ReplicatedStorage
+    return remote
+end
+
+local RequestRemote = getOrCreateRemoteEvent(REQUEST_REMOTE_NAME)
+local ResultRemote = getOrCreateRemoteEvent(RESULT_REMOTE_NAME)
+
+local requestedSpeeds = {}
+local lastRequestAt = {}
+
+local function isAuthorized(player)
+    if game.CreatorType == Enum.CreatorType.User and player.UserId == game.CreatorId then
+        return true
+    end
+    return AUTHORIZED_USER_IDS[player.UserId] == true
+end
+
+local function sendResult(player, success, speed, message)
+    if player and player.Parent == Players then
+        ResultRemote:FireClient(player, success, speed, message)
+    end
+end
+
+local function applySpeed(player, character, speed)
+    if not player or not character or player.Character ~= character then
+        return false, "Personagem indisponível. Tente novamente depois do respawn."
+    end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        return false, "Humanoid ainda não está pronto. Tente novamente."
+    end
+
+    humanoid.WalkSpeed = speed
+    return true, string.format("Velocidade aplicada pelo servidor: %d studs/s.", speed)
+end
+
+RequestRemote.OnServerEvent:Connect(function(player, requestedValue)
+    if not isAuthorized(player) then
+        sendResult(player, false, nil, "Ajuste reservado ao proprietário ou a UserIds autorizados neste projeto.")
+        return
+    end
+
+    local now = os.clock()
+    local last = lastRequestAt[player.UserId] or 0
+    if now - last < REQUEST_COOLDOWN then
+        sendResult(player, false, nil, "Aguarde um instante antes de solicitar outra alteração.")
+        return
+    end
+    lastRequestAt[player.UserId] = now
+
+    if type(requestedValue) ~= "number"
+        or requestedValue ~= requestedValue
+        or requestedValue == math.huge
+        or requestedValue == -math.huge
+    then
+        sendResult(player, false, nil, "Valor inválido. Escolha um número entre 8 e 1000.")
+        return
+    end
+
+    local speed = math.clamp(math.floor(requestedValue + 0.5), MIN_SPEED, MAX_SPEED)
+    local character = player.Character
+    local success, message = applySpeed(player, character, speed)
+    if not success then
+        sendResult(player, false, nil, message)
+        return
+    end
+
+    requestedSpeeds[player.UserId] = speed
+    sendResult(player, true, speed, message)
+end)
+
+local function onCharacterAdded(player, character)
+    local speed = requestedSpeeds[player.UserId]
+    if not speed then
+        return
+    end
+
+    task.spawn(function()
+        local humanoid = character:WaitForChild("Humanoid", 10)
+        if not humanoid or player.Character ~= character or not player.Parent then
+            return
+        end
+        if isAuthorized(player) then
+            humanoid.WalkSpeed = speed
+        end
+    end)
+end
+
+local function bindPlayer(player)
+    player.CharacterAdded:Connect(function(character)
+        onCharacterAdded(player, character)
+    end)
+    if player.Character then
+        onCharacterAdded(player, player.Character)
+    end
+end
+
+Players.PlayerAdded:Connect(bindPlayer)
+for _, player in ipairs(Players:GetPlayers()) do
+    bindPlayer(player)
+end
+
+Players.PlayerRemoving:Connect(function(player)
+    requestedSpeeds[player.UserId] = nil
+    lastRequestAt[player.UserId] = nil
+end)
+
+print("[SpeedUltra V11.0] Servidor autorizado iniciado. Limites de WalkSpeed: " .. MIN_SPEED .. "–" .. MAX_SPEED .. ".")
+
+--- FIM DO CÓDIGO DO SCRIPT DE SERVIDOR ---
+]=]
