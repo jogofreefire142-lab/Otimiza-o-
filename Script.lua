@@ -1,6 +1,6 @@
 --[[
-    SPEED ULTRA V9.5 — 2026
-    Base inicial modernizada com Rayfield Gen2.
+    SPEED ULTRA V10.1 — 2026
+    UI reorganizada, controle de velocidade autorizado para projeto próprio e otimização visual reversível.
 
     Incluído nesta versão:
       • UI responsiva com abas e temas;
@@ -14,15 +14,23 @@
       • novas opções para Beam, Sparkles, Bloom e SunRays;
       • indicador aproximado de FPS e informações básicas do dispositivo;
       • varredura incremental para reduzir picos de memória;
+      • ESP visual de ovos reconhecidos, com nome/raridade/distância e contorno occlusion-safe;
+      • agendamento único para detector/ESP, com limpeza dos marcadores ao desligar ou encerrar;
       • controle de intensidade que evita reiniciar a varredura a cada movimento;
       • token de inicialização antecipado para não abrir abas duplicadas ao reexecutar;
       • restauração/encerramento da sessão anterior e verificação do token após esperas;
-      • aviso explícito de que não existe modo Anti-Ban implementado nem garantia contra punições.
+      • aviso explícito de que não existe modo Anti-Ban implementado nem garantia contra punições;
+      • abas reorganizadas e atalhos para ações frequentes;
+      • seletor de velocidade para projeto próprio via RemoteEvent validado no servidor (8–32);
 
-    Nota: não altera WalkSpeed, colisões, massa ou física do jogo. Não automatiza
-    coleta, teleporte ou interação em servidores públicos. Para mecânicas de movimento
+    Nota: o ESP só destaca ovos identificáveis que a busca já vê; não lê dados ocultos.
+    Não altera WalkSpeed, colisões, massa ou física do jogo. Não automatiza coleta,
+    teleporte ou interação em servidores públicos. Para mecânicas de movimento
     e entrega de ovos num jogo próprio, implemente a lógica autorizada no servidor.
     Segurança: a instância única é proteção contra conflito local, NÃO é Anti-Ban.
+    O seletor de velocidade não altera jogos públicos: só envia uma solicitação ao
+    RemoteEvent documentado no script de servidor fornecido separadamente, com lista
+    de autorização. Sem esse servidor no seu próprio jogo, a opção explica que está indisponível.
     Compatibilidade: a UI remota usa loadstring e tenta game:HttpGet com fallback
     request/http_request quando disponível. Exige um ambiente que permita executar
     Lua remoto; não é um LocalScript padrão do Roblox Studio.
@@ -104,6 +112,7 @@ if not IsCurrentBoot() then
 end
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
@@ -178,9 +187,12 @@ local loadOk, loadResult = pcall(function()
         return nil
     end
 
-    local compileOk, chunkOrError = pcall(loadstring, source)
-    if not compileOk or type(chunkOrError) ~= "function" then
-        error("Não foi possível compilar a biblioteca Rayfield Gen2: " .. tostring(chunkOrError))
+    local compileOk, chunkOrError, compileMessage = pcall(loadstring, source)
+    if not compileOk then
+        error("Falha no compilador ao carregar Rayfield Gen2: " .. tostring(chunkOrError))
+    end
+    if type(chunkOrError) ~= "function" then
+        error("A fonte remota não compilou para uma função: " .. tostring(compileMessage or chunkOrError))
     end
     if not IsCurrentBoot() then
         return nil
@@ -195,13 +207,13 @@ end
 if loadOk then
     Rayfield = loadResult
 else
-    warn("[SPEED ULTRA V9.5] Não foi possível carregar Rayfield Gen2: " .. tostring(loadResult))
+    warn("[SPEED ULTRA V10.1] Não foi possível carregar Rayfield Gen2: " .. tostring(loadResult))
     ReleaseBootReservation()
     return
 end
 
 if type(Rayfield) ~= "table" or type(Rayfield.CreateWindow) ~= "function" then
-    warn("[SPEED ULTRA V9.5] Rayfield Gen2 não retornou uma API válida; a interface não foi iniciada.")
+    warn("[SPEED ULTRA V10.1] Rayfield Gen2 não retornou uma API válida; a interface não foi iniciada.")
     ReleaseBootReservation()
     return
 end
@@ -219,7 +231,7 @@ local Config = {
     DisableSparkles = false,
     DisablePostEffects = true,
     ReduceBloomSunRays = true,
-    ScanBudgetObjects = 120,
+    ScanBudgetObjects = 60,
     MaxScanSeconds = 12,
     CarryMonitorInterval = 2.5,
     CarryAttributes = {
@@ -278,6 +290,30 @@ local FpsText
 local DeviceText
 local ObjectiveText
 local ObjectiveDropdown
+local CarryStatusText
+local SpeedStatusText
+local CurrentSpeedText
+local SpeedSlider
+local RuntimeDiagnosticsText
+local EggScanText
+local EggScanRangeSlider
+local EggScanAutoToggle
+local EggScanAutoEnabled = false
+local EggScanRunning = false
+local EggScanToken = 0
+local EggScanRange = 120
+local DesiredProjectSpeed = 16
+local SpeedRequestPending = false
+local SpeedRequestSerial = 0
+local RestoreVisualProperties
+local ClearEggEspVisuals
+local EggEspStatusText
+local EggEspEnabled = false
+local EggEspObjects = setmetatable({}, { __mode = "k" })
+local EggScanSchedulerToken = 0
+local SPEED_REQUEST_REMOTE = "SpeedUltraAuthorizedSpeedRequest"
+local SPEED_RESULT_REMOTE = "SpeedUltraAuthorizedSpeedResult"
+local SpeedResultBound = false
 
 local function AddConnection(connection)
     Connections[#Connections + 1] = connection
@@ -292,6 +328,57 @@ local function DisconnectAll()
     end
     table.clear(Connections)
 end
+
+-- Cleanup provisório: fica registrado antes da construção da interface. Se uma
+-- segunda execução chegar durante a inicialização, esta rotina cancela workers,
+-- desconecta listeners já criados e fecha a janela parcial.
+local function EarlyCleanup(reason)
+    if State.Cleaning then
+        -- Idempotência: mesmo em chamadas repetidas, não deixe conexões residuais.
+        DisconnectAll()
+        return
+    end
+
+    State.Cleaning = true
+    State.Alive = false
+    EggScanAutoEnabled = false
+    EggEspEnabled = false
+    EggScanToken += 1
+    EggScanSchedulerToken += 1
+    if ClearEggEspVisuals then pcall(ClearEggEspVisuals) end
+    State.VisualOptimization = false
+    State.OptimizeToken += 1
+    State.Optimizing = false
+    State.CollectingPending = false
+
+    if RestoreVisualProperties then
+        pcall(RestoreVisualProperties)
+    end
+    DisconnectAll()
+
+    if Env[REGISTRY_KEY] == EarlyCleanup then
+        Env[REGISTRY_KEY] = nil
+    end
+    if Boot.cleanup == EarlyCleanup then
+        Boot.cleanup = nil
+    end
+    if Env[BOOT_KEY] == Boot then
+        Boot.cancelled = true
+        Env[BOOT_KEY] = nil
+    end
+
+    pcall(function()
+        local target = Window or Boot.window
+        if target and type(target.Destroy) == "function" then
+            target:Destroy()
+        elseif target and type(target.Unload) == "function" then
+            target:Unload()
+        end
+    end)
+end
+
+Boot.cleanup = EarlyCleanup
+Env[REGISTRY_KEY] = EarlyCleanup
 
 local function UpdateStatus(text)
     if not State.Alive or not StatusText then
@@ -310,6 +397,93 @@ local function UpdateOperationStatus(text)
         OperationText:Set(text)
     end)
 end
+
+local function UpdateSpeedStatus(text)
+    if not State.Alive or not SpeedStatusText then
+        return
+    end
+    pcall(function()
+        SpeedStatusText:Set(text)
+    end)
+end
+
+local function BindSpeedResultRemote()
+    if SpeedResultBound then
+        return
+    end
+
+    local remote = ReplicatedStorage:FindFirstChild(SPEED_RESULT_REMOTE)
+    if not remote or not remote:IsA("RemoteEvent") then
+        return
+    end
+
+    SpeedResultBound = true
+    AddConnection(remote.OnClientEvent:Connect(function(success, appliedSpeed, message)
+        if not State.Alive then
+            return
+        end
+
+        SpeedRequestPending = false
+        SpeedRequestSerial += 1 -- invalida qualquer temporizador de timeout pendente
+        if success == true and type(appliedSpeed) == "number" then
+            UpdateSpeedStatus(string.format("CONFIRMADO PELO SERVIDOR: %.0f studs/s. %s", appliedSpeed, tostring(message or "")))
+        else
+            UpdateSpeedStatus("PEDIDO RECUSADO: " .. tostring(message or "sem detalhe"))
+        end
+    end))
+end
+
+local function RequestProjectSpeed(speed)
+    if not State.Alive or not IsCurrentBoot() then
+        return
+    end
+    if SpeedRequestPending then
+        UpdateSpeedStatus("Já existe um pedido aguardando resposta. Espere a confirmação ou o aviso de timeout.")
+        return
+    end
+
+    local normalized = tonumber(speed)
+    if not normalized or normalized ~= normalized or normalized == math.huge or normalized == -math.huge then
+        UpdateSpeedStatus("Valor inválido. Escolha entre 8 e 32.")
+        return
+    end
+    normalized = math.clamp(math.floor(normalized + 0.5), 8, 32)
+
+    local remote = ReplicatedStorage:FindFirstChild(SPEED_REQUEST_REMOTE)
+    if not remote or not remote:IsA("RemoteEvent") then
+        UpdateSpeedStatus("INDISPONÍVEL: falta o RemoteEvent do servidor no seu próprio jogo. Esta opção não altera Roube um Ovo público.")
+        return
+    end
+
+    BindSpeedResultRemote()
+    SpeedRequestSerial += 1
+    local requestSerial = SpeedRequestSerial
+    SpeedRequestPending = true
+
+    local ok, err = pcall(function()
+        remote:FireServer(normalized)
+    end)
+    if not ok then
+        SpeedRequestPending = false
+        UpdateSpeedStatus("FALHA AO ENVIAR: " .. tostring(err))
+        return
+    end
+
+    UpdateSpeedStatus(string.format("Pedido de %.0f studs/s enviado; aguardando confirmação do servidor...", normalized))
+    task.delay(4, function()
+        if State.Alive and SpeedRequestPending and SpeedRequestSerial == requestSerial then
+            SpeedRequestPending = false
+            UpdateSpeedStatus("SEM CONFIRMAÇÃO após 4 s. Verifique se o Script de servidor está em ServerScriptService e se você está autorizado.")
+        end
+    end)
+end
+
+-- Liga o retorno do servidor mesmo se os RemoteEvents forem replicados após a UI.
+AddConnection(ReplicatedStorage.ChildAdded:Connect(function(child)
+    if child.Name == SPEED_RESULT_REMOTE and child:IsA("RemoteEvent") then
+        task.defer(BindSpeedResultRemote)
+    end
+end))
 
 -- =========================================================
 -- OTIMIZAÇÃO VISUAL REVERSÍVEL
@@ -349,7 +523,7 @@ local function GetOriginal(object, property)
     return value
 end
 
-local function RestoreVisualProperties()
+RestoreVisualProperties = function()
     for object, properties in pairs(State.OriginalProperties) do
         if object then
             for property, value in pairs(properties) do
@@ -671,6 +845,20 @@ local function SetVisualOptimization(enabled)
     end)
 end
 
+
+-- Agrupa mudanças de controles próximas para evitar reiniciar a varredura visual
+-- várias vezes em sequência. A lógica visual original permanece intacta.
+local VisualRebuildSerial = 0
+local function ScheduleVisualRebuild()
+    VisualRebuildSerial += 1
+    local serial = VisualRebuildSerial
+    task.delay(0.20, function()
+        if State.Alive and serial == VisualRebuildSerial and State.VisualOptimization then
+            SetVisualOptimization(true)
+        end
+    end)
+end
+
 local function OnVisualDescendantAdded(object)
     if not State.Alive or not State.VisualOptimization or not object then
         return
@@ -784,8 +972,8 @@ end
 
 local WindowCreateOk, CreatedWindow = pcall(function()
     return Rayfield:CreateWindow({
-        name = "SPEED ULTRA V9.5",
-        subtitle = "2026 • Mobile Edition",
+        name = "SPEED ULTRA V10.0",
+        subtitle = "2026 • Mobile Edition • V10.0",
         sidebarLayout = true,
         theme = "amethyst",
         showName = "SPEED ULTRA",
@@ -793,7 +981,7 @@ local WindowCreateOk, CreatedWindow = pcall(function()
         configuration = {
             autoSave = true,
             autoLoad = true,
-            -- Nome anterior mantido para reaproveitar as preferências da V9.4.
+            -- Nome estável mantido para reaproveitar as preferências salvas anteriormente.
             fileName = "SpeedUltraV9_4_2026",
             customFolder = "SpeedUltra"
         }
@@ -801,7 +989,7 @@ local WindowCreateOk, CreatedWindow = pcall(function()
 end)
 
 if not WindowCreateOk or not CreatedWindow then
-    warn("[SPEED ULTRA V9.5] Falha ao criar a janela Rayfield: " .. tostring(CreatedWindow))
+    warn("[SPEED ULTRA V10.1] Falha ao criar a janela Rayfield: " .. tostring(CreatedWindow))
     ReleaseBootReservation()
     return
 end
@@ -809,6 +997,12 @@ end
 Window = CreatedWindow
 Boot.window = Window
 if not IsCurrentBoot() then
+    State.Alive = false
+    State.OptimizeToken += 1
+    pcall(function()
+        if RestoreVisualProperties then RestoreVisualProperties() end
+    end)
+    DisconnectAll()
     pcall(function()
         if Window and type(Window.Destroy) == "function" then
             Window:Destroy()
@@ -819,16 +1013,551 @@ if not IsCurrentBoot() then
     return
 end
 
-local HomeTab = Window:CreateTab({ name = "Início", icon = "house" })
-local PerformanceTab = Window:CreateTab({ name = "Desempenho", icon = "gauge" })
-local CarryTab = Window:CreateTab({ name = "Carry", icon = "package" })
-local FarmTab = Window:CreateTab({ name = "Objetivos", icon = "egg" })
-local EventTab = Window:CreateTab({ name = "Evento", icon = "calendar-days" })
-local SettingsTab = Window:CreateTab({ name = "Interface", icon = "palette" })
+-- =========================================================
+-- DETECTOR INFORMATIVO DE OVOS PRÓXIMOS (SOMENTE LEITURA)
+-- Uma busca manual por vez; atualização automática é opcional e vem desligada.
+-- Só lista objetos cujo nome/metadados parecem indicar ovo, dentro da câmera,
+-- do raio selecionado e com linha de visão aproximada. Não interage com o jogo.
+-- =========================================================
+local EggCatalog = {
+    { key = "t-rex", name = "T-Rex Egg", hint = "Prehistoric • guia comunitário: 17M de velocidade" },
+    { key = "trex", name = "T-Rex Egg", hint = "Prehistoric • guia comunitário: 17M de velocidade" },
+    { key = "eternal phoenix", name = "Eternal Phoenix Egg", hint = "Aparição rara/janela Eternal segundo guia comunitário" },
+    { key = "yeti egg", name = "Yeti Egg", hint = "Snow • guia comunitário: 170K de velocidade" },
+    { key = "cherry blossom", name = "Cherry Blossom Egg", hint = "Conteúdo da atualização Cherry Blossom" },
+    { key = "chicken egg", name = "Chicken Egg", hint = "Forest • início; registro comunitário" },
+    { key = "swan egg", name = "Swan Egg", hint = "Lake • guia comunitário: 900 de velocidade" },
+    { key = "scorpion egg", name = "Scorpion Egg", hint = "Desert • guia comunitário: 10K de velocidade" },
+    { key = "tiger egg", name = "Tiger Egg", hint = "Jungle • guia comunitário: 40K de velocidade" },
+    { key = "hellhound egg", name = "Hellhound Egg", hint = "Volcano • guia comunitário: 700K de velocidade" },
+    { key = "moby egg", name = "Moby Egg", hint = "Abyss Ocean • guia comunitário: 2.5M de velocidade" },
+    { key = "dragon egg", name = "Dragon Egg", hint = "Cosmic • guia comunitário: 700M de velocidade" },
+    { key = "brainrot egg", name = "Brainrot Egg", hint = "Aparição rara relatada pela comunidade; confirme no jogo" },
+    { key = "halloween egg", name = "Halloween Egg", hint = "Update 9 • evento de Halloween; disponibilidade a confirmar" },
+    { key = "candy corn", name = "Candy Corn event egg", hint = "Evento Halloween • confirme moeda e troca no ponto do evento" },
+    { key = "extinction egg", name = "Extinction Egg", hint = "Update 6 • loja/recompensa específica do jogo" },
+    { key = "experiment #001", name = "Experiment #001 Egg", hint = "Update 5 • Experiment Shop / Samples" },
+    { key = "experiment #013", name = "Experiment #013 Egg", hint = "Update 5 • Experiment Shop / Samples" },
+    { key = "luminous egg", name = "Luminous Egg", hint = "Update 4 • conteúdo de Angels vs Demons" },
+}
 
+local function LowerText(value)
+    return string.lower(tostring(value or ""))
+end
+
+local function EggNameHint(object)
+    local result = ""
+    pcall(function() result = tostring(object.Name or "") end)
+    local displayAttributes = { "DisplayName", "EggName", "EggType" }
+    for _, attributeName in ipairs(displayAttributes) do
+        local value
+        pcall(function() value = object:GetAttribute(attributeName) end)
+        if type(value) == "string" and value ~= "" then
+            result = value
+            break
+        end
+    end
+    return result
+end
+
+local function HasEggMarker(object)
+    if not object then return false end
+    local name = LowerText(object.Name)
+    if string.find(name, "egg", 1, true) or string.find(name, "ovo", 1, true) then
+        return true
+    end
+
+    local isEgg, eggName, eggType
+    pcall(function()
+        isEgg = object:GetAttribute("IsEgg")
+        eggName = object:GetAttribute("EggName")
+        eggType = object:GetAttribute("EggType")
+    end)
+    if isEgg == true or (type(eggName) == "string" and eggName ~= "")
+        or (type(eggType) == "string" and eggType ~= "") then
+        return true
+    end
+
+    -- Some experiences name the egg model after the animal and place it inside
+    -- an Eggs/Ovos container. Treat that container as a hint, not as proof of rarity.
+    local parent = object.Parent
+    for _ = 1, 4 do
+        if not parent or parent == Workspace then break end
+        local parentName = LowerText(parent.Name)
+        local parentIsContainer = false
+        pcall(function() parentIsContainer = parent:IsA("Folder") end)
+        if parentIsContainer and (string.find(parentName, "egg", 1, true)
+            or string.find(parentName, "ovo", 1, true)) then
+            return true
+        end
+        parent = parent.Parent
+    end
+    return false
+end
+
+local function ResolveEggCandidate(object)
+    local current = object
+    local partCandidate = nil
+    for _ = 1, 8 do
+        if not current or current == Workspace then break end
+        local classIsModel, classIsPart = false, false
+        pcall(function()
+            classIsModel = current:IsA("Model")
+            classIsPart = current:IsA("BasePart")
+        end)
+        if (classIsModel or classIsPart) and HasEggMarker(current) then
+            if classIsModel then return current end
+            if not partCandidate then partCandidate = current end
+        end
+        current = current.Parent
+    end
+    return partCandidate
+end
+
+local function EggWorldPosition(object)
+    local position
+    local ok = pcall(function()
+        if object:IsA("Model") then
+            position = object:GetPivot().Position
+        elseif object:IsA("BasePart") then
+            position = object.Position
+        end
+    end)
+    if ok then return position end
+    return nil
+end
+
+local function EggRarityHint(object, displayName)
+    local rarity
+    pcall(function() rarity = object:GetAttribute("Rarity") end)
+    if type(rarity) == "string" and rarity ~= "" then
+        return rarity .. " (atributo visível)"
+    end
+    local name = LowerText(displayName)
+    for _, label in ipairs({ "secret", "eternal", "divine", "mythic", "mythical", "legendary", "epic", "rare", "common" }) do
+        if string.find(name, label, 1, true) then return label:gsub("^%l", string.upper) .. " (inferido do nome)" end
+    end
+    return "raridade não exposta"
+end
+
+local function EggCatalogHint(displayName)
+    local name = LowerText(displayName)
+    for _, entry in ipairs(EggCatalog) do
+        local key = LowerText(entry.key)
+        local speciesKey = key:gsub("%s+event egg$", ""):gsub("%s+egg$", "")
+        if string.find(name, key, 1, true)
+            or (speciesKey ~= "" and string.find(name, speciesKey, 1, true)) then
+            return entry.name .. " — " .. entry.hint
+        end
+    end
+    return "Sem correspondência específica no catálogo; confira o nome/preço na loja ou placa do jogo."
+end
+
+local function IsEggInView(candidate, position, camera, character)
+    local projected, onScreen = camera:WorldToViewportPoint(position)
+    if not onScreen or projected.Z <= 0 then return false end
+
+    -- Confere aproximadamente a linha de visão para não anunciar ovos atrás de paredes.
+    local origin = camera.CFrame.Position
+    local direction = position - origin
+    if direction.Magnitude <= 0 then return true end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = character and { character } or {}
+    params.IgnoreWater = true
+    local hit = Workspace:Raycast(origin, direction, params)
+    if not hit then return true end
+    return hit.Instance == candidate or hit.Instance:IsDescendantOf(candidate)
+end
+
+-- ESP local de ovos VISÍVEIS. Não usa Drawing APIs, dados ocultos, nem profundidade através de paredes.
+local function GetEggEspPart(candidate)
+    local part
+    local ok = pcall(function()
+        if candidate:IsA("BasePart") then
+            part = candidate
+        elseif candidate:IsA("Model") then
+            part = candidate.PrimaryPart or candidate:FindFirstChildWhichIsA("BasePart", true)
+        end
+    end)
+    if ok then return part end
+    return nil
+end
+
+local function RemoveEggEsp(candidate)
+    local record = EggEspObjects[candidate]
+    if not record then return end
+    if record.highlight then pcall(function() record.highlight:Destroy() end) end
+    if record.billboard then pcall(function() record.billboard:Destroy() end) end
+    EggEspObjects[candidate] = nil
+end
+
+ClearEggEspVisuals = function()
+    for candidate in pairs(EggEspObjects) do
+        RemoveEggEsp(candidate)
+    end
+    if EggEspStatusText and State.Alive then
+        pcall(function() EggEspStatusText:Set("ESP de ovos desligado; os marcadores locais foram removidos.") end)
+    end
+end
+
+local function UpsertEggEsp(item)
+    local candidate = item and item.object
+    if not candidate or not candidate.Parent then return false end
+
+    local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+    if not playerGui then return false end
+
+    local record = EggEspObjects[candidate]
+    if not record then
+        record = { candidate = candidate, lastSeen = os.clock() }
+        EggEspObjects[candidate] = record
+    end
+
+    if not record.highlight or not record.highlight.Parent then
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "SpeedUltraEggESPHighlight"
+        highlight.Adornee = candidate
+        highlight.FillTransparency = 1
+        highlight.OutlineColor = Color3.fromRGB(196, 146, 255)
+        highlight.OutlineTransparency = 0.08
+        pcall(function() highlight.DepthMode = Enum.HighlightDepthMode.Occluded end)
+        -- Client-created Workspace descendants remain local to this client.
+        highlight.Parent = Workspace
+        record.highlight = highlight
+    else
+        pcall(function() record.highlight.Adornee = candidate end)
+    end
+
+    local part = GetEggEspPart(candidate)
+    if part then
+        if not record.billboard or not record.billboard.Parent then
+            local billboard = Instance.new("BillboardGui")
+            billboard.Name = "SpeedUltraEggESPLabel"
+            billboard.Adornee = part
+            billboard.Size = UDim2.new(0, 210, 0, 48)
+            billboard.StudsOffset = Vector3.new(0, 2.35, 0)
+            billboard.LightInfluence = 0
+            billboard.MaxDistance = math.max(30, EggScanRange + 20)
+            billboard.AlwaysOnTop = false -- não desenha por cima de paredes
+            billboard.Enabled = true
+
+            local label = Instance.new("TextLabel")
+            label.Name = "Text"
+            label.BackgroundColor3 = Color3.fromRGB(47, 22, 72)
+            label.BackgroundTransparency = 0.18
+            label.BorderSizePixel = 0
+            label.Size = UDim2.fromScale(1, 1)
+            label.Font = Enum.Font.GothamSemibold
+            label.TextColor3 = Color3.fromRGB(255, 245, 255)
+            label.TextStrokeTransparency = 0.5
+            label.TextSize = 12
+            label.TextWrapped = true
+            label.TextXAlignment = Enum.TextXAlignment.Center
+            label.TextYAlignment = Enum.TextYAlignment.Center
+            label.Parent = billboard
+
+            billboard.Parent = playerGui
+            record.billboard = billboard
+            record.label = label
+            record.part = part
+        else
+            if record.part ~= part then
+                pcall(function() record.billboard.Adornee = part end)
+                record.part = part
+            end
+        end
+
+        if record.label then
+            local distance = type(item.distance) == "number" and item.distance or 0
+            local rarity = tostring(item.rarity or "raridade não exposta")
+            local name = tostring(item.name or "Ovo sem nome exposto")
+            pcall(function()
+                record.label.Text = string.format("%s\n%s • %.0f studs", name, rarity, distance)
+                record.billboard.MaxDistance = math.max(30, EggScanRange + 20)
+            end)
+        end
+    end
+
+    record.lastSeen = os.clock()
+    return true
+end
+
+local function ApplyEggEspFromScan(found, partial)
+    if not EggEspEnabled then return end
+    local seen = {}
+    local displayed = 0
+    -- Keep a safe margin under Roblox's 255 Highlight client limit.
+    local maxHighlights = 60
+    for i = 1, math.min(#found, maxHighlights) do
+        local item = found[i]
+        if item.object then
+            local ok, applied = pcall(UpsertEggEsp, item)
+            if ok and applied then
+                seen[item.object] = true
+                displayed += 1
+            end
+        end
+    end
+
+    local now = os.clock()
+    for candidate, record in pairs(EggEspObjects) do
+        local stale = not candidate.Parent or (now - (record.lastSeen or 0)) > 30
+        if stale or (not partial and not seen[candidate]) then
+            RemoveEggEsp(candidate)
+        end
+    end
+
+    if EggEspStatusText then
+        local note = partial and "Busca parcial; os resultados anteriores podem continuar até a próxima busca completa." or "Marcadores atualizados com a última busca completa."
+        pcall(function()
+            EggEspStatusText:Set(string.format("ESP: %d ovos identificados com contorno/rótulo local. %s", displayed, note))
+        end)
+    end
+end
+
+local function PerformEggScan(token)
+    if not State.Alive or EggScanRunning then return end
+    EggScanRunning = true
+
+    local function finish(text)
+        EggScanRunning = false
+        if State.Alive and token == EggScanToken and EggScanText then
+            pcall(function() EggScanText:Set(text) end)
+        end
+    end
+
+    local camera = Workspace.CurrentCamera
+    local character = Player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not camera or not root then
+        finish("Aguardando câmera/personagem. Tente escanear novamente após o spawn.")
+        return
+    end
+
+    -- Não chamar Workspace:GetDescendants(): ele aloca uma lista grande de uma vez.
+    -- A travessia por níveis permite ceder execução e limitar o trabalho por busca.
+    local MAX_SCAN_SECONDS = 10
+    local MAX_SCAN_OBJECTS = 30000
+    local BATCH_SIZE = 80
+    local startedAt = os.clock()
+    local stack = { Workspace }
+    local seen = {}
+    local found = {}
+    local checked = 0
+    local partial = false
+    local raycasts = 0
+    local MAX_RAYCASTS = 250
+
+    while #stack > 0 do
+        if not State.Alive or token ~= EggScanToken then
+            EggScanRunning = false
+            return
+        end
+        if checked >= MAX_SCAN_OBJECTS or (os.clock() - startedAt) >= MAX_SCAN_SECONDS then
+            partial = true
+            break
+        end
+
+        local parent = stack[#stack]
+        stack[#stack] = nil
+        local children
+        local childrenOk = pcall(function()
+            children = parent:GetChildren()
+        end)
+        if not childrenOk or type(children) ~= "table" then
+            partial = true
+        else
+            for _, object in ipairs(children) do
+                if not State.Alive or token ~= EggScanToken then
+                    EggScanRunning = false
+                    return
+                end
+
+                checked += 1
+                stack[#stack + 1] = object
+
+                local isModelOrPart = false
+                pcall(function()
+                    isModelOrPart = object:IsA("Model") or object:IsA("BasePart")
+                end)
+                if isModelOrPart and HasEggMarker(object) then
+                    local candidate = ResolveEggCandidate(object)
+                    if candidate and candidate.Parent and not seen[candidate]
+                        and not (character and candidate:IsDescendantOf(character)) then
+                        seen[candidate] = true
+                        local position = EggWorldPosition(candidate)
+                        if position then
+                            local distance = (position - root.Position).Magnitude
+                            if distance <= EggScanRange then
+                                local projected, onScreen = camera:WorldToViewportPoint(position)
+                                if onScreen and projected.Z > 0 then
+                                    local visible = false
+                                    if raycasts < MAX_RAYCASTS then
+                                        raycasts += 1
+                                        local okVisible, visibleResult = pcall(IsEggInView, candidate, position, camera, character)
+                                        visible = okVisible and visibleResult == true
+                                    else
+                                        -- Deixa de fazer raycast depois do limite para evitar pico de CPU.
+                                        -- A busca continua, mas os próximos candidatos não são confirmados visualmente.
+                                        visible = false
+                                    end
+                                    if visible then
+                                        local displayName = EggNameHint(candidate)
+                                        found[#found + 1] = {
+                                            object = candidate,
+                                            position = position,
+                                            name = displayName ~= "" and displayName or "Ovo sem nome exposto",
+                                            rarity = EggRarityHint(candidate, displayName),
+                                            distance = distance,
+                                            hint = EggCatalogHint(displayName),
+                                        }
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                if checked % BATCH_SIZE == 0 then
+                    task.wait(0.025)
+                    if (os.clock() - startedAt) >= MAX_SCAN_SECONDS then
+                        partial = true
+                        break
+                    end
+                end
+                if checked >= MAX_SCAN_OBJECTS then
+                    partial = true
+                    break
+                end
+            end
+        end
+    end
+
+    table.sort(found, function(a, b) return a.distance < b.distance end)
+    local statusPrefix = partial and "Busca PARCIAL" or "Busca concluída"
+    local duration = os.clock() - startedAt
+    ApplyEggEspFromScan(found, partial)
+    if #found == 0 then
+        local extra = partial
+            and "O limite de segurança foi alcançado; repita a busca se o ovo não apareceu."
+            or "Nenhum ovo identificável visível foi encontrado nesta busca."
+        finish(string.format(
+            "%s • %d objetos examinados • %.1fs\n%s\nLimite: nomes/atributos não expostos ao cliente não podem ser identificados; isso não prova que não existam ovos.",
+            statusPrefix, checked, duration, extra
+        ))
+        return
+    end
+
+    local lines = { string.format("%s • %d objetos examinados • %d ovos identificados (até 8 exibidos) • %.1fs", statusPrefix, checked, #found, duration) }
+    for i = 1, math.min(8, #found) do
+        local item = found[i]
+        lines[#lines + 1] = string.format("%d. %s • %s • %.0f studs\n   %s", i, item.name, item.rarity, item.distance, item.hint)
+    end
+    if partial then
+        lines[#lines + 1] = "A busca atingiu o limite de segurança e pode ter deixado objetos sem examinar. Toque para repetir."
+    end
+    lines[#lines + 1] = "Somente leitura: não coleta, não se move e não consulta dados ocultos do servidor."
+    finish(table.concat(lines, "\n"))
+end
+
+
+-- Se uma instância destruída ou uma API do jogo lançar erro no meio da busca,
+-- destrava o detector e mostra a falha em vez de deixar a opção presa em "buscando".
+local function SafePerformEggScan(token)
+    local ok, err = pcall(PerformEggScan, token)
+    if not ok then
+        EggScanRunning = false
+        if State.Alive and token == EggScanToken and EggScanText then
+            pcall(function()
+                EggScanText:Set("A busca foi interrompida por um erro local: " .. tostring(err))
+            end)
+        end
+    end
+end
+
+local function ScanEggsOnce()
+    if EggScanRunning then
+        if EggScanText then pcall(function() EggScanText:Set("A busca anterior ainda está em andamento.") end) end
+        return
+    end
+    local token = EggScanToken
+    task.spawn(function() SafePerformEggScan(token) end)
+end
+
+local function RefreshEggScanScheduler()
+    EggScanSchedulerToken += 1
+    local schedulerToken = EggScanSchedulerToken
+    if not State.Alive or (not EggScanAutoEnabled and not EggEspEnabled) then return end
+
+    task.spawn(function()
+        while State.Alive and schedulerToken == EggScanSchedulerToken
+            and (EggScanAutoEnabled or EggEspEnabled) do
+            -- Wait for an older scan cancelled by a toggle to release its running flag.
+            while State.Alive and EggScanRunning and schedulerToken == EggScanSchedulerToken do
+                task.wait(0.1)
+            end
+            if not State.Alive or schedulerToken ~= EggScanSchedulerToken
+                or (not EggScanAutoEnabled and not EggEspEnabled) then
+                return
+            end
+            local scanToken = EggScanToken
+            SafePerformEggScan(scanToken)
+            local interval = EggEspEnabled and 10 or 15
+            for _ = 1, interval do
+                if not State.Alive or schedulerToken ~= EggScanSchedulerToken
+                    or (not EggScanAutoEnabled and not EggEspEnabled) then
+                    return
+                end
+                task.wait(1)
+            end
+        end
+    end)
+end
+
+local function SetEggAutoScan(enabled)
+    EggScanAutoEnabled = enabled == true
+    EggScanToken += 1
+    RefreshEggScanScheduler()
+    if not EggScanAutoEnabled and not EggEspEnabled and EggScanText then
+        pcall(function() EggScanText:Set("Atualização automática desligada. Use ‘Escanear ovos visíveis agora’ para uma busca manual.") end)
+    end
+end
+
+local function SetEggEspEnabled(enabled)
+    EggEspEnabled = enabled == true
+    EggScanToken += 1
+    if not EggEspEnabled then
+        if ClearEggEspVisuals then pcall(ClearEggEspVisuals) end
+        if EggEspStatusText then pcall(function() EggEspStatusText:Set("ESP de ovos desligado.") end) end
+    end
+    RefreshEggScanScheduler()
+    if EggEspEnabled and EggEspStatusText then
+        pcall(function() EggEspStatusText:Set("ESP ligado: procurando ovos identificáveis e visíveis; primeira leitura em andamento.") end)
+    end
+end
+
+local function BuildInterface()
+-- Grupos da barra lateral para ficar fácil achar cada função no celular.
+Window:CreateSection({ name = "Principal" })
+local HomeTab = Window:CreateTab({ name = "Início", icon = "house" })
+local SpeedTab = Window:CreateTab({ name = "Velocidade", icon = "gauge" })
+
+Window:CreateSection({ name = "Ferramentas" })
+local PerformanceTab = Window:CreateTab({ name = "Desempenho", icon = "zap" })
+local CarryTab = Window:CreateTab({ name = "Monitor", icon = "activity" })
+
+Window:CreateSection({ name = "Objetivos" })
+local FarmTab = Window:CreateTab({ name = "Ovos", icon = "egg" })
+local EventTab = Window:CreateTab({ name = "Evento", icon = "calendar-days" })
+
+Window:CreateSection({ name = "Configuração" })
+local SettingsTab = Window:CreateTab({ name = "Configurações", icon = "settings" })
+
+HomeTab:CreateSection({ name = "Comece por aqui" })
 HomeTab:CreateText({
-    name = "SPEED ULTRA V9.5 • 2026",
-    text = "Interface modernizada para celular. O painel monitora o personagem e oferece ajustes visuais locais reversíveis."
+    name = "SPEED ULTRA V10.0 • 2026",
+    text = "V10.1: scanner informativo de ovos próximos, catálogo comunitário, assistente de eventos e otimização visual reversível. Use os atalhos abaixo para as ações mais frequentes."
 })
 
 StatusText = HomeTab:CreateText({
@@ -841,6 +1570,135 @@ HomeTab:CreateText({
     text = "A otimização visual altera apenas propriedades gráficas locais selecionadas. O resultado depende dos efeitos existentes no mapa; a porcentagem é a intensidade configurada, não uma promessa de aumento de FPS."
 })
 
+HomeTab:CreateSection({ name = "Atalhos rápidos" })
+HomeTab:CreateButton({
+    name = "Ativar otimização visual",
+    description = "Liga o conjunto de efeitos definido na aba Desempenho.",
+    callback = function()
+        if VisualToggle then
+            pcall(function() VisualToggle:Set(true) end)
+        else
+            SetVisualOptimization(true)
+        end
+    end
+})
+HomeTab:CreateButton({
+    name = "Restaurar visual original",
+    description = "Desfaz as alterações visuais que o script guardou.",
+    callback = function()
+        if VisualToggle then
+            pcall(function() VisualToggle:Set(false) end)
+        else
+            SetVisualOptimization(false)
+        end
+    end
+})
+
+-- Seletor de velocidade para jogo próprio. O servidor deve instalar
+-- SpeedUltraAuthorizedSpeed.server.lua e validar o jogador autorizado.
+SpeedTab:CreateSection({ name = "Velocidade no Roube um Ovo" })
+SpeedTab:CreateText({
+    name = "Como funciona",
+    text = "O jogo oficial orienta treinar na esteira e melhorar os upgrades. O indicador abaixo lê a WalkSpeed local atual; ele não mede SpeedPower nem garante que o servidor aceitou uma mudança. Para evitar uma falsa promessa, o slider de 8–32 só envia pedidos a um servidor autorizado de uma experiência própria; não força velocidade no servidor público."
+})
+SpeedStatusText = SpeedTab:CreateText({
+    name = "Estado do pedido",
+    text = "Selecione um valor e pressione Aplicar no seu próprio projeto."
+})
+CurrentSpeedText = SpeedTab:CreateText({
+    name = "WalkSpeed atual (leitura local)",
+    text = "Aguardando personagem..."
+})
+SpeedSlider = SpeedTab:CreateSlider({
+    name = "Velocidade desejada",
+    description = "Intervalo limitado pelo servidor a 8–32 studs/s.",
+    range = { 8, 32 },
+    increment = 1,
+    suffix = " studs/s",
+    value = DesiredProjectSpeed,
+    flag = "AuthorizedProjectSpeedV96",
+    callback = function(value)
+        if type(value) ~= "number" then return end
+        DesiredProjectSpeed = math.clamp(math.floor(value + 0.5), 8, 32)
+        UpdateSpeedStatus(string.format("Selecionado: %d studs/s. Pressione Aplicar para enviar ao servidor do seu projeto.", DesiredProjectSpeed))
+    end
+})
+SpeedTab:CreateButton({
+    name = "Aplicar velocidade no meu projeto",
+    description = "Envia a solicitação ao RemoteEvent que o script de servidor seguro cria.",
+    callback = function()
+        RequestProjectSpeed(DesiredProjectSpeed)
+    end
+})
+SpeedTab:CreateButton({
+    name = "Restaurar velocidade padrão (16)",
+    description = "Solicita ao servidor autorizado a velocidade padrão de 16 studs/s.",
+    callback = function()
+        DesiredProjectSpeed = 16
+        if SpeedSlider then pcall(function() SpeedSlider:Set(16) end) end
+        RequestProjectSpeed(16)
+    end
+})
+BindSpeedResultRemote()
+
+SpeedTab:CreateButton({
+    name = "Como ganhar velocidade no Roube um Ovo",
+    description = "Mostra o método de jogo disponível no próprio jogo público.",
+    callback = function()
+        UpdateSpeedStatus("Roube um Ovo público: use a esteira dentro do jogo para ganhar velocidade. Este slider só aplica velocidade em um projeto próprio com servidor autorizado.")
+    end
+})
+
+-- Detector e catálogo de ovos: informativo, com varredura manual como padrão.
+FarmTab:CreateSection({ name = "Detector de ovos visíveis" })
+FarmTab:CreateText({
+    name = "Como o detector e o ESP funcionam",
+    text = "Procura modelos/peças identificáveis dentro da câmera, do raio configurado e com linha de visão aproximada. O ESP desenha contorno e rótulo locais somente para ovos reconhecidos; não desenha através de paredes nem lê inventário oculto. Se a experiência não expuser nome/atributos ao cliente, a identificação pode falhar."
+})
+EggEspStatusText = FarmTab:CreateText({
+    name = "Estado do ESP de ovos",
+    text = "ESP desligado. Ligue para destacar ovos identificados pela busca visual."
+})
+FarmTab:CreateToggle({
+    name = "ESP visual de ovos identificáveis",
+    description = "Contorno e rótulo com nome/raridade disponível/distância. Apenas objetos já identificados e visíveis; não é um radar através de paredes.",
+    value = false,
+    flag = "V101_EggESPVisible",
+    callback = function(value) SetEggEspEnabled(value == true) end
+})
+EggScanRangeSlider = FarmTab:CreateSlider({
+    name = "Raio da busca",
+    description = "Distância máxima para incluir ovos próximos; aumentar o raio não revela objetos fora da área carregada pelo jogo.",
+    range = { 30, 250 },
+    increment = 10,
+    suffix = " studs",
+    value = EggScanRange,
+    flag = "V99_EggScanRange",
+    callback = function(value)
+        if type(value) == "number" then EggScanRange = math.clamp(math.floor(value / 10 + 0.5) * 10, 30, 250) end
+    end
+})
+EggScanText = FarmTab:CreateText({
+    name = "Resultado do detector",
+    text = "Ainda não foi feita uma busca. Toque em ‘Escanear ovos visíveis agora’."
+})
+FarmTab:CreateButton({
+    name = "Escanear ovos visíveis agora",
+    description = "Faz uma busca incremental limitada por tempo e quantidade de objetos para reduzir picos de processamento; pode informar resultado parcial.",
+    callback = function() ScanEggsOnce() end
+})
+EggScanAutoToggle = FarmTab:CreateToggle({
+    name = "Atualizar detector automaticamente",
+    description = "Atualiza em intervalos controlados: 10 s com ESP ligado, ou 15 s com apenas a atualização automática.",
+    value = false,
+    flag = "V99_EggAutoScan",
+    callback = function(value) SetEggAutoScan(value == true) end
+})
+FarmTab:CreateText({
+    name = "Catálogo de referência — não é um radar de spawn",
+    text = "Guias comunitários listam, entre outros: Chicken Egg (Forest), Swan Egg (Lake), Scorpion Egg (Desert), Tiger Egg (Jungle), Yeti Egg (Snow), Hellhound Egg (Volcano), Moby Egg (Abyss Ocean), T-Rex Egg (Prehistoric), Dragon Egg (Cosmic), Cherry Blossom Egg, Eternal Phoenix Egg, Brainrot Egg, Halloween Egg, Candy Corn event egg, Extinction Egg, Experiment #001/#013 e Luminous Egg. Requisitos/raridades podem mudar; use os preços e rótulos atuais da própria experiência para decidir."
+})
+
 -- Planejador manual de objetivos. Esta aba não controla movimento, interação,
 -- teleporte ou coleta; serve apenas para registrar uma meta e mostrar uma dica.
 local ManualGoal = "Ovo de maior valor (manual)"
@@ -849,9 +1707,18 @@ local ObjectiveDescriptions = {
     ["Ovo do evento (manual)"] = "Confira o bioma, a loja e os requisitos do evento dentro do jogo. Esta seleção só registra sua meta atual.",
     ["Ovo Enchanted Forest (manual)"] = "Meta manual para a Floresta Encantada. Guia comunitário relata uma missão de 20 ovos do bioma para o Wisp; confirme no painel do jogo.",
     ["Halloween Dimension Egg (manual)"] = "Meta manual para ovos da Halloween Dimension. Confirme preço, disponibilidade e recompensa diretamente na loja do evento.",
-    ["Manor Key (manual)"] = "Rota comunitária relatada: Phantom Express até Forgotten Town, redemoinho verde e pesca subterrânea com Haunted Rod; depois use a chave na Manor Door. A chance de drop não está confirmada.",
+    ["Candy Corn / ovo do evento (manual)"] = "Guia comunitário relata Candy Corn por retornos de ovos e derrotas de monstros, trocadas no grande pumpkin do spawn de Halloween. Confirme o objetivo e a loja no jogo.",
+    ["Extinction Egg (manual)"] = "Update 6: consulte a loja/recompensa da área de Dr. Scramble; preço e disponibilidade devem ser confirmados no jogo.",
+    ["Experiment #001 / #013 (manual)"] = "Update 5: os guias relacionam esses ovos à Experiment Shop e a Samples. Verifique custo e requisitos da loja atual.",
+    ["Luminous Egg (manual)"] = "Update 4: conteúdo de Angels vs Demons segundo guias comunitários; confirme se ainda está disponível e o custo atual.",
+    ["Manor Key (manual)"] = "Rota comunitária: Phantom Express → Forgotten Town → redemoinho verde → área subterrânea → pescar com Haunted Rod até obter Manor Key → Abandoned Manor/Manor Door. A chance de drop não foi confirmada.",
 }
+local ObjectiveSteps = { confirmed = false, collected = false, returned = false }
+local ObjectiveToggleControls = {}
+local ObjectiveProgressText
+local RefreshObjectiveProgress
 
+FarmTab:CreateSection({ name = "Escolher meta" })
 FarmTab:CreateText({
     name = "Acompanhamento manual",
     text = "Organiza o objetivo escolhido e suas etapas. Não executa auto-farm, teleporte, coleta automática nem chamadas remotas de gameplay."
@@ -870,45 +1737,100 @@ ObjectiveDropdown = FarmTab:CreateDropdown({
         "Ovo do evento (manual)",
         "Ovo Enchanted Forest (manual)",
         "Halloween Dimension Egg (manual)",
+        "Candy Corn / ovo do evento (manual)",
+        "Extinction Egg (manual)",
+        "Experiment #001 / #013 (manual)",
+        "Luminous Egg (manual)",
         "Manor Key (manual)",
     },
     value = ManualGoal,
     flag = "ManualObjectiveV94",
     callback = function(value)
         if type(value) ~= "string" then return end
+        local changedGoal = ManualGoal ~= value
         ManualGoal = value
         if ObjectiveText then
             pcall(function()
                 ObjectiveText:Set(ObjectiveDescriptions[value] or "Objetivo selecionado. Consulte as instruções dentro do jogo.")
             end)
         end
+        if changedGoal and ObjectiveSteps then
+            -- O progresso de um alvo não deve ser reutilizado ao selecionar outro.
+            ObjectiveSteps.confirmed = false
+            ObjectiveSteps.collected = false
+            ObjectiveSteps.returned = false
+            for _, control in ipairs(ObjectiveToggleControls or {}) do
+                pcall(function() control:Set(false) end)
+            end
+            if RefreshObjectiveProgress then RefreshObjectiveProgress() end
+        end
     end
 })
 
-FarmTab:CreateToggle({
+ObjectiveProgressText = FarmTab:CreateText({
+    name = "Progresso da meta",
+    text = "0/3 etapas concluídas"
+})
+RefreshObjectiveProgress = function()
+    local completed = 0
+    for _, done in pairs(ObjectiveSteps) do
+        if done then completed += 1 end
+    end
+    if ObjectiveProgressText then
+        pcall(function()
+            ObjectiveProgressText:Set(string.format("%d/3 etapas concluídas", completed))
+        end)
+    end
+end
+
+ObjectiveToggleControls[#ObjectiveToggleControls + 1] = FarmTab:CreateToggle({
     name = "Etapa manual: objetivo conferido",
     description = "Marque depois de verificar o alvo na experiência.",
     value = false,
-    flag = "ManualObjectiveConfirmedV94",
-    callback = function(value) end
+    forgetState = true,
+    callback = function(value)
+        ObjectiveSteps.confirmed = value == true
+        RefreshObjectiveProgress()
+    end
 })
 
-FarmTab:CreateToggle({
+ObjectiveToggleControls[#ObjectiveToggleControls + 1] = FarmTab:CreateToggle({
     name = "Etapa manual: ovo recolhido normalmente",
     description = "Apenas checklist; não aciona prompts nem eventos remotos.",
     value = false,
-    flag = "ManualEggCollectedV94",
-    callback = function(value) end
+    forgetState = true,
+    callback = function(value)
+        ObjectiveSteps.collected = value == true
+        RefreshObjectiveProgress()
+    end
 })
 
-FarmTab:CreateToggle({
+ObjectiveToggleControls[#ObjectiveToggleControls + 1] = FarmTab:CreateToggle({
     name = "Etapa manual: retorno à base concluído",
     description = "Marque depois de concluir pessoalmente o transporte no jogo.",
     value = false,
-    flag = "ManualEggReturnedV94",
-    callback = function(value) end
+    forgetState = true,
+    callback = function(value)
+        ObjectiveSteps.returned = value == true
+        RefreshObjectiveProgress()
+    end
 })
 
+FarmTab:CreateButton({
+    name = "Limpar progresso da meta",
+    description = "Desmarca as etapas manuais para não misturar o progresso entre objetivos.",
+    callback = function()
+        for _, control in ipairs(ObjectiveToggleControls) do
+            pcall(function() control:Set(false) end)
+        end
+        ObjectiveSteps.confirmed = false
+        ObjectiveSteps.collected = false
+        ObjectiveSteps.returned = false
+        RefreshObjectiveProgress()
+    end
+})
+
+PerformanceTab:CreateSection({ name = "Ativar e ajustar" })
 OperationText = PerformanceTab:CreateText({
     name = "Resultado da otimização",
     text = "Pronto. Ative a otimização para iniciar uma varredura reversível."
@@ -942,12 +1864,13 @@ ReductionSlider = PerformanceTab:CreateSlider({
             -- Rayfield Gen2 informa dragging=true enquanto o utilizador move
             -- o slider. Só reinicia a varredura quando ele solta o controle.
             if State.UIReady and not State.ControlsUpdating and State.VisualOptimization and not dragging then
-                SetVisualOptimization(true)
+                ScheduleVisualRebuild()
             end
         end
     end
 })
 
+PerformanceTab:CreateSection({ name = "Tipos de efeito" })
 ParticlesToggle = PerformanceTab:CreateToggle({
     name = "Reduzir partículas",
     description = "Ajusta a taxa de emissão dos ParticleEmitter selecionados.",
@@ -956,7 +1879,7 @@ ParticlesToggle = PerformanceTab:CreateToggle({
     callback = function(value)
         Config.OptimizeParticles = value == true
         if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
-            SetVisualOptimization(true)
+            ScheduleVisualRebuild()
         end
     end
 })
@@ -969,7 +1892,7 @@ TrailsToggle = PerformanceTab:CreateToggle({
     callback = function(value)
         Config.OptimizeTrails = value == true
         if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
-            SetVisualOptimization(true)
+            ScheduleVisualRebuild()
         end
     end
 })
@@ -982,7 +1905,7 @@ AtmosphericsToggle = PerformanceTab:CreateToggle({
     callback = function(value)
         Config.OptimizeAtmospherics = value == true
         if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
-            SetVisualOptimization(true)
+            ScheduleVisualRebuild()
         end
     end
 })
@@ -995,7 +1918,7 @@ PostEffectsToggle = PerformanceTab:CreateToggle({
     callback = function(value)
         Config.DisablePostEffects = value == true
         if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
-            SetVisualOptimization(true)
+            ScheduleVisualRebuild()
         end
     end
 })
@@ -1008,7 +1931,7 @@ BeamsToggle = PerformanceTab:CreateToggle({
     callback = function(value)
         Config.OptimizeBeams = value == true
         if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
-            SetVisualOptimization(true)
+            ScheduleVisualRebuild()
         end
     end
 })
@@ -1021,7 +1944,7 @@ SparklesToggle = PerformanceTab:CreateToggle({
     callback = function(value)
         Config.DisableSparkles = value == true
         if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
-            SetVisualOptimization(true)
+            ScheduleVisualRebuild()
         end
     end
 })
@@ -1034,8 +1957,36 @@ BloomSunRaysToggle = PerformanceTab:CreateToggle({
     callback = function(value)
         Config.ReduceBloomSunRays = value == true
         if State.UIReady and not State.ControlsUpdating and State.VisualOptimization then
-            SetVisualOptimization(true)
+            ScheduleVisualRebuild()
         end
+    end
+})
+
+PerformanceTab:CreateSection({ name = "Ações e diagnóstico" })
+PerformanceTab:CreateButton({
+    name = "Perfil de leveza forte (70%)",
+    description = "Aplica a redução visual mais alta oferecida por este script, ativando todas as categorias suportadas. É local e reversível; pode alterar bastante a aparência e não garante ganho fixo de desempenho.",
+    callback = function()
+        State.ControlsUpdating = true
+        Config.ReductionPercent = 70
+        Config.OptimizeParticles = true
+        Config.OptimizeTrails = true
+        Config.OptimizeAtmospherics = true
+        Config.OptimizeBeams = true
+        Config.DisableSparkles = true
+        Config.DisablePostEffects = true
+        Config.ReduceBloomSunRays = true
+        if ReductionSlider then pcall(function() ReductionSlider:Set(70) end) end
+        if ParticlesToggle then pcall(function() ParticlesToggle:Set(true) end) end
+        if TrailsToggle then pcall(function() TrailsToggle:Set(true) end) end
+        if AtmosphericsToggle then pcall(function() AtmosphericsToggle:Set(true) end) end
+        if BeamsToggle then pcall(function() BeamsToggle:Set(true) end) end
+        if SparklesToggle then pcall(function() SparklesToggle:Set(true) end) end
+        if PostEffectsToggle then pcall(function() PostEffectsToggle:Set(true) end) end
+        if BloomSunRaysToggle then pcall(function() BloomSunRaysToggle:Set(true) end) end
+        if VisualToggle then pcall(function() VisualToggle:Set(true) end) end
+        State.ControlsUpdating = false
+        SetVisualOptimization(true)
     end
 })
 
@@ -1068,59 +2019,135 @@ PerformanceTab:CreateButton({
     end
 })
 
+EventTab:CreateSection({ name = "Halloween Part 2 — Update 10" })
 EventTab:CreateText({
-    name = "Update 10 — Halloween Part 2 (24/10/2026)",
-    text = "Fonte comunitária consultada em 25/10/2026; não é documentação oficial do desenvolvedor. O Update 10 relata Abandoned Manor, Manor Key, a luta Pumpkin Brute → Pumpkin King e a fusão Cursed Monarch Divine. Uma fonte comunitária lista a janela da Part 2 até 25/10/2026 16:34 UTC (13:34 em Brasília), mas confirme a disponibilidade no próprio jogo; nomes e mecânicas podem estar incompletos."
+    name = "Status da janela publicada",
+    text = "O Update 10 — Halloween Part 2 — aparece em guias comunitários como lançado em 24/10/2026. Não encontrei um prazo confiável de remoção para a parte 2; confirme no próprio jogo se a dimensão, a mansão, os chefes e as recompensas seguem disponíveis. As instruções abaixo são comunitárias, não uma confirmação oficial do desenvolvedor."
 })
 
 EventTab:CreateText({
-    name = "Manor Key — rota relatada",
-    text = "1) Tenha acesso ao Phantom Express. 2) Vá a Forgotten Town. 3) Entre no redemoinho verde. 4) Pesque na área subterrânea com Haunted Rod até obter Manor Key. 5) Volte à Abandoned Manor e interaja com a Manor Door acorrentada. A chave não garante abrir o portal do chefe: são entradas distintas. A chance de drop não foi confirmada."
-})
-
-EventTab:CreateToggle({
-    name = "Etapa: acesso ao Phantom Express verificado",
-    description = "Checklist manual persistente.", value = false,
-    flag = "V94_Halloween_PhantomExpress", callback = function(value) end
-})
-EventTab:CreateToggle({
-    name = "Etapa: Manor Key obtida",
-    description = "Marque depois de confirmar o item no inventário.", value = false,
-    flag = "V94_Halloween_ManorKey", callback = function(value) end
-})
-EventTab:CreateToggle({
-    name = "Etapa: Manor Door aberta",
-    description = "Não confunda a porta da mansão com o portal do chefe.", value = false,
-    flag = "V94_Halloween_ManorDoor", callback = function(value) end
+    name = "Ovos e moeda do Halloween",
+    text = "Guias comunitários do Update 9 citam Halloween Egg e Candy Corn event egg. O Candy Corn é relatado como recompensa de devolver ovos e derrotar monstros, com troca no grande pumpkin do spawn de Halloween. O preço, a chance e a disponibilidade podem mudar; confirme o contador e os requisitos dentro da experiência antes de gastar recursos."
 })
 
 EventTab:CreateText({
-    name = "Chefe e Boss Mastery",
-    text = "O guia comunitário descreve uma luta em duas fases: Pumpkin Brute seguida de Pumpkin King. Ele relata 1 Boss Kill = 1 Mastery e 65 tiers; confira o contador e resgate recompensas dentro do jogo. Nenhuma chance do drop Divine foi confirmada."
-})
-EventTab:CreateToggle({
-    name = "Etapa: vitória e recompensa conferidas",
-    description = "Marque só depois de verificar o contador/recompensa no jogo.", value = false,
-    flag = "V94_Halloween_BossMastery", callback = function(value) end
+    name = "Pré-requisitos relatados",
+    text = "Antes da Manor Key, os guias indicam concluir a cadeia de Echo, obter a Haunted Rod e o Phantom Express Ticket. Se o jogo não oferecer a viagem, confira os objetivos da parte anterior e as mensagens atuais do próprio jogo."
 })
 
 EventTab:CreateText({
-    name = "Cursed Monarch Divine — receita relatada",
-    text = "Guia independente mostra 2 Ghost Fish — Eternal e 2 Voidseer Pumpkin — Divine no altar da mansão. O consumo dos itens, a distribuição entre jogadores e a possibilidade de fazer solo não estão confirmados; confira o altar antes de usar itens raros."
+    name = "Rota da Manor Key",
+    text = "Rota comunitária do Update 10: 1) confirme que possui Phantom Express Ticket e Haunted Rod; 2) embarque no Phantom Express; 3) em Forgotten Town, procure o redemoinho verde; 4) entre na área subterrânea e pesque com Haunted Rod até obter Manor Key; 5) volte à Abandoned Manor e use a interação normal na Manor Door. A chance de obter a chave e o número de tentativas não estão confirmados. A porta e a entrada do chefe podem ser objetivos diferentes."
 })
-EventTab:CreateToggle({
-    name = "Etapa: receita conferida diretamente no altar",
-    description = "A checklist não executa fusões nem consome itens.", value = false,
-    flag = "V94_Halloween_FusionRecipe", callback = function(value) end
+
+local EventSteps = { prerequisite = false, phantom = false, key = false, door = false, boss = false, recipe = false }
+local EventToggleControls = {}
+local EventProgressText = EventTab:CreateText({
+    name = "Progresso do evento",
+    text = "0/6 etapas confirmadas manualmente"
+})
+local function RefreshEventProgress()
+    local completed = 0
+    for _, done in pairs(EventSteps) do
+        if done then completed += 1 end
+    end
+    if EventProgressText then
+        pcall(function()
+            EventProgressText:Set(string.format("%d/6 etapas confirmadas manualmente", completed))
+        end)
+    end
+end
+
+EventToggleControls[#EventToggleControls + 1] = EventTab:CreateToggle({
+    name = "Etapa 1: pré-requisitos conferidos",
+    description = "Marque quando a cadeia de Echo, Haunted Rod e Phantom Express Ticket estiverem conferidos no jogo.",
+    value = false,
+    flag = "V98_Halloween_Prerequisites",
+    callback = function(value)
+        EventSteps.prerequisite = value == true
+        RefreshEventProgress()
+    end
+})
+EventToggleControls[#EventToggleControls + 1] = EventTab:CreateToggle({
+    name = "Etapa 2: viagem até Forgotten Town",
+    description = "Confirme a viagem e a localização do redemoinho verde manualmente.",
+    value = false,
+    flag = "V94_Halloween_PhantomExpress",
+    callback = function(value)
+        EventSteps.phantom = value == true
+        RefreshEventProgress()
+    end
+})
+EventToggleControls[#EventToggleControls + 1] = EventTab:CreateToggle({
+    name = "Etapa 3: Manor Key obtida",
+    description = "Marque somente depois de confirmar a chave no inventário.",
+    value = false,
+    flag = "V94_Halloween_ManorKey",
+    callback = function(value)
+        EventSteps.key = value == true
+        RefreshEventProgress()
+    end
+})
+EventToggleControls[#EventToggleControls + 1] = EventTab:CreateToggle({
+    name = "Etapa 4: Manor Door aberta",
+    description = "A checklist não interage com portas nem consome itens.",
+    value = false,
+    flag = "V94_Halloween_ManorDoor",
+    callback = function(value)
+        EventSteps.door = value == true
+        RefreshEventProgress()
+    end
+})
+
+EventTab:CreateText({
+    name = "Chefe e Boss Mastery — relatos da comunidade",
+    text = "Guias de jogadores descrevem duas fases, Pumpkin Brute e depois Pumpkin King. Em algumas gravações, é preciso limpar raízes que bloqueiam os canhões e dispará-los conforme os avisos da arena. Os guias relatam uma trilha de até 65 níveis de Boss Mastery, mas verifique o contador e resgate cada recompensa dentro do jogo; nomes, requisitos exatos e chances não são garantidos."
+})
+EventToggleControls[#EventToggleControls + 1] = EventTab:CreateToggle({
+    name = "Etapa 5: chefe e recompensas conferidos",
+    description = "Marque depois de verificar a vitória e as recompensas disponíveis na tela Boss Mastery.",
+    value = false,
+    flag = "V94_Halloween_BossMastery",
+    callback = function(value)
+        EventSteps.boss = value == true
+        RefreshEventProgress()
+    end
+})
+
+EventTab:CreateText({
+    name = "Fusão Cursed Monarch — confirme antes de usar pets",
+    text = "As fontes comunitárias divergem na forma de nomear a segunda peça (Voidseer Pumpkin ou Divine Voidseer) e não confirmam o consumo, a contribuição por jogador nem a posse do resultado. Uma gravação mostra quatro pedestais com dois Ghost Fish e dois Voidseer Pumpkins. Leia os rótulos no altar dentro do jogo e NÃO use pets raros com base apenas nesta checklist."
+})
+EventToggleControls[#EventToggleControls + 1] = EventTab:CreateToggle({
+    name = "Etapa 6: receita lida no altar",
+    description = "Marca apenas que você conferiu os rótulos atuais no jogo; não executa fusões.",
+    value = false,
+    flag = "V94_Halloween_FusionRecipe",
+    callback = function(value)
+        EventSteps.recipe = value == true
+        RefreshEventProgress()
+    end
+})
+
+EventTab:CreateButton({
+    name = "Limpar checklist do evento",
+    description = "Desmarca as seis etapas para começar um acompanhamento novo.",
+    callback = function()
+        for _, control in ipairs(EventToggleControls) do
+            pcall(function() control:Set(false) end)
+        end
+        for key in pairs(EventSteps) do EventSteps[key] = false end
+        RefreshEventProgress()
+    end
 })
 
 EventTab:CreateText({
     name = "Perfil visual do evento",
-    text = "O preset abaixo ajusta efeitos visuais locais. Não movimenta o personagem nem executa coleta/teleporte automáticos."
+    text = "Este preset só ajusta efeitos gráficos locais para reduzir obstruções visuais. Não movimenta o personagem, não coleta ovos e não teleporta."
 })
 
 EventTab:CreateButton({
-    name = "Ativar perfil Halloween Part 2",
+    name = "Ativar perfil visual Halloween",
     description = "Aplica um preset visual local de 50%; pode ser desfeito.",
     callback = function()
         State.ControlsUpdating = true
@@ -1154,12 +2181,13 @@ EventTab:CreateButton({
     end
 })
 
+CarryTab:CreateSection({ name = "Estado do personagem e transporte" })
 CarryTab:CreateText({
     name = "Monitor do carry",
     text = "O monitor é somente de leitura. Ele tenta identificar atributos, tags e constraints comuns, mas cada jogo pode usar um sistema diferente."
 })
 
-local CarryStatusText = CarryTab:CreateText({
+CarryStatusText = CarryTab:CreateText({
     name = "Estado detectado",
     text = "Aguardando primeira leitura..."
 })
@@ -1181,11 +2209,13 @@ CarryTab:CreateToggle({
     end
 })
 
+SettingsTab:CreateSection({ name = "Aparência" })
 SettingsTab:CreateText({
     name = "Tema e preferências",
     text = "O Rayfield guarda as opções com suporte à configuração do ambiente. Em certos executores, o salvamento persistente pode depender das permissões de arquivo disponíveis."
 })
 
+SettingsTab:CreateSection({ name = "Sessão e segurança" })
 SettingsTab:CreateText({
     name = "Instância única / recarga limpa",
     text = "Ao executar o script novamente, a execução anterior é invalidada, os monitores são desconectados, as propriedades visuais salvas são restauradas e a janela antiga é fechada antes de a nova sessão continuar. Se a primeira execução ainda estiver carregando a UI, ela verifica o token e aborta quando retoma."
@@ -1199,6 +2229,49 @@ SettingsTab:CreateText({
 DeviceText = SettingsTab:CreateText({
     name = "Dispositivo",
     text = "Aguardando informações locais..."
+})
+
+RuntimeDiagnosticsText = SettingsTab:CreateText({
+    name = "Autodiagnóstico",
+    text = "Execute o teste após a inicialização para verificar os recursos disponíveis."
+})
+
+SettingsTab:CreateButton({
+    name = "Executar diagnóstico agora",
+    description = "Verifica personagem, UI, remotes do projeto próprio e estado da otimização local.",
+    callback = function()
+        local character = Player.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local requestRemote = ReplicatedStorage:FindFirstChild(SPEED_REQUEST_REMOTE)
+        local resultRemote = ReplicatedStorage:FindFirstChild(SPEED_RESULT_REMOTE)
+        local viewportText = "indisponível"
+        pcall(function()
+            local camera = Workspace.CurrentCamera
+            if camera then
+                local viewport = camera.ViewportSize
+                viewportText = string.format("%d x %d", math.floor(viewport.X), math.floor(viewport.Y))
+            end
+        end)
+
+        local report = string.format(
+            "UI: %s\nPersonagem: %s\nHumanoid: %s\nRootPart: %s\nWalkSpeed (leitura): %s\nRemote de pedido: %s\nRemote de retorno: %s\nOtimização: %s\nFPS aprox.: %d\nViewport: %s",
+            (Window and State.Alive) and "ativa" or "inativa",
+            character and character.Parent and "presente" or "ausente",
+            humanoid and humanoid.Parent and "presente" or "ausente",
+            root and root.Parent and "presente" or "ausente",
+            (humanoid and humanoid.Parent) and string.format("%.1f", humanoid.WalkSpeed) or "indisponível",
+            requestRemote and requestRemote:IsA("RemoteEvent") and "encontrado" or "ausente",
+            resultRemote and resultRemote:IsA("RemoteEvent") and "encontrado" or "ausente",
+            State.Optimizing and "processando" or (State.VisualOptimization and "ativa" or "desativada"),
+            State.Stats.FPS,
+            viewportText
+        )
+        if RuntimeDiagnosticsText then
+            pcall(function() RuntimeDiagnosticsText:Set(report) end)
+        end
+        UpdateStatus("Autodiagnóstico concluído. Consulte Configurações > Autodiagnóstico.")
+    end
 })
 
 SettingsTab:CreateButton({
@@ -1230,8 +2303,31 @@ SettingsTab:CreateButton({
     end
 })
 
+end
+
+local uiBuildOk, uiBuildError = xpcall(BuildInterface, function(err)
+    local ok, trace = pcall(function()
+        return debug.traceback(tostring(err), 2)
+    end)
+    return ok and trace or tostring(err)
+end)
+
+if not uiBuildOk then
+    warn("[SPEED ULTRA V10.1] Falha ao construir a interface: " .. tostring(uiBuildError))
+    EarlyCleanup("UI_BUILD_FAILED")
+    return
+end
+
 -- Se outra execução começou enquanto a UI estava sendo construída, não conecte monitores.
 if not IsCurrentBoot() then
+    -- Se a execução foi invalidada durante a montagem da UI, descarte listeners
+    -- e restaure qualquer propriedade que eventualmente tenha sido tocada.
+    pcall(function()
+        if RestoreVisualProperties then RestoreVisualProperties() end
+    end)
+    State.Alive = false
+    State.OptimizeToken += 1
+    DisconnectAll()
     pcall(function()
         if Window and type(Window.Destroy) == "function" then
             Window:Destroy()
@@ -1269,8 +2365,25 @@ local function RefreshCharacterReferences()
     end)
 end
 
+local function RefreshSpeedReadout()
+    if not CurrentSpeedText or not State.Alive then
+        return
+    end
+    local humanoid = Player.Character and Player.Character:FindFirstChildOfClass("Humanoid")
+    local value = "indisponível"
+    if humanoid and humanoid.Parent then
+        pcall(function()
+            value = string.format("%.1f studs/s", humanoid.WalkSpeed)
+        end)
+    else
+        value = "aguardando personagem"
+    end
+    pcall(function() CurrentSpeedText:Set(value .. " • leitura local, não é confirmação do servidor") end)
+end
+
 local function BuildDiagnosticText()
     RefreshCharacterReferences()
+    RefreshSpeedReadout()
 
     local character = State.CurrentCharacter
     local humanoid = State.CurrentHumanoid
@@ -1306,7 +2419,10 @@ end
 
 AddConnection(Player.CharacterAdded:Connect(function()
     task.wait(0.25)
-    RefreshCharacterReferences()
+    if State.Alive and IsCurrentBoot() then
+        RefreshCharacterReferences()
+        RefreshSpeedReadout()
+    end
 end))
 
 AddConnection(Player.CharacterRemoving:Connect(function()
@@ -1413,6 +2529,11 @@ local function Cleanup(reason)
 
     State.Cleaning = true
     State.Alive = false
+    EggScanAutoEnabled = false
+    EggEspEnabled = false
+    EggScanToken += 1
+    EggScanSchedulerToken += 1
+    if ClearEggEspVisuals then pcall(ClearEggEspVisuals) end
     State.VisualOptimization = false
     State.OptimizeToken += 1
     State.Optimizing = false
@@ -1443,7 +2564,7 @@ local function Cleanup(reason)
     end)
 
     if reason and reason ~= "USER_UNLOAD" and reason ~= "RELOAD" then
-        warn("[SPEED ULTRA V9.5] Encerrado: " .. tostring(reason))
+        warn("[SPEED ULTRA V10.1] Encerrado: " .. tostring(reason))
     end
 end
 
@@ -1458,4 +2579,4 @@ if State.VisualOptimization then
     SetVisualOptimization(true)
 end
 
-print("[SPEED ULTRA V9.5] Inicializado com Rayfield Gen2; instância única ativa.")
+print("[SPEED ULTRA V10.1] Inicializado com Rayfield Gen2; ESP de ovos visíveis disponível; instância única ativa.")
